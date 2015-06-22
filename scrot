@@ -1,0 +1,5 @@
+#!/bin/sh
+
+cd ~/Desktop 2>/dev/null
+exec /usr/bin/scrot "$@"
+

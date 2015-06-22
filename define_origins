@@ -1,0 +1,61 @@
+#!/bin/sh
+
+# Config
+NUMBER_OF_INDENT_SPACES=2
+REGEXP='\b[A-Z_][A-Z0-9_]*\b'
+
+# DEF_MACRO
+TARGET=$(echo ${1} | grep -o $REGEXP)
+[ -z "${TARGET}" ] && exit 1
+
+find_where_defined() {
+    local target=${1}
+    local level=${2}
+    [ -z "${level}" ] && level=0
+
+    echo $target | indent ${level} | grep $target
+
+    local found=$(grep -rEn "#define\s+$target" .)
+    echo "${found}" | analyze_grep_result ${target} ${level}
+}
+
+indent() {
+    local level=${1}
+    [ "${level}" -eq 0 ] || \
+        local tab=$(printf "%0$((${level}*${NUMBER_OF_INDENT_SPACES}))d" 0 | sed 's/0/\ /g')
+
+    while read line
+    do
+        echo "${tab}${line}"
+    done
+}
+
+detect_used_defines() {
+    local target=${1}
+
+    while read line
+    do
+        echo "${line}" | grep -o $REGEXP | grep -v $target | sort -u
+    done
+}
+
+analyze_grep_result() {
+    local target=${1}
+    local level=${2}
+
+    while read line
+    do
+        echo "${line}" | indent ${level} | grep $REGEXP
+        local defines=$(echo ${line} | detect_used_defines $target)
+
+        for define in ${defines}
+        do
+            find_where_defined ${define} $((${level}+1))
+        done
+    done
+}
+
+find_where_defined $TARGET
+
+echo Done
+

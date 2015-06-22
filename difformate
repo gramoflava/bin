@@ -1,0 +1,75 @@
+#!/bin/sh
+#
+
+DIR_ORIGINAL="a"
+DIR_UPDATED="b"
+PATCHES='difformate.patches'
+ADDONS='difformate.patches/ADDONS'
+CHANGES_FILE='difformate.changelog'
+
+info()  { echo [INFO] "$*"; }
+warn()  { echo [WARN] "$*"; }
+error() { echo [ERROR] "$*"; }
+die()   { error "$*"; exit 1; }
+
+if [ -n "${2}" ]
+then
+    DIR_ORIGINAL="${1}"
+    DIR_UPDATED="${2}"
+fi
+
+if [ -n "${3}" ]
+then
+    DIR_RESULTS="${3}"
+    mkdir -p "${DIR_RESULTS}"
+    PATCHES="${DIR_RESULTS}/difformate.patches"
+    ADDONS="${DIR_RESULTS}/difformate.patches/ADDONS"
+    CHANGES_FILE="${DIR_RESULTS}/difformate.changelog"
+fi
+
+echo "Will compare next directories:"
+echo "Directory with original sources: '${DIR_ORIGINAL}'"
+echo "Directory with updated sources: '${DIR_UPDATED}'"
+echo
+echo "Will generate next data:"
+echo "Patches will be placed in the folder '${PATCHES}'"
+echo "New files will be placed in the folder '${ADDONS}'"
+echo "Information about all differences will be stored as '${CHANGES_FILE}'"
+echo
+
+[ -d "${DIR_ORIGINAL}" ] || die "Folder does not exist"
+[ -d "${DIR_UPDATED}" ] || die "Folder does not exist"
+
+info "Generating changelog"
+diff -qdr "${DIR_ORIGINAL}" "${DIR_UPDATED}" | sed 's/^.* and \(.*\) differ/\1/' | sort >"${CHANGES_FILE}"
+
+mkdir -p "${PATCHES}"
+mkdir -p "${ADDONS}"
+
+for file in `find "${DIR_UPDATED}" -type f`
+do
+#   suffix="${file#${DIR_UPDATED}/}"
+    suffix=$(echo "${file}" | sed "s|^${DIR_UPDATED}/||")
+    file_orig="${DIR_ORIGINAL}/${suffix}"
+
+    if [ -f "${file_orig}" ]
+    then
+        patch=$(echo "${suffix}" | sed 's/\//_/g')
+        patch="${PATCHES}/${patch}.patch"
+
+        if [ "`diff ${file_orig} ${file}`" != "" ]; then
+            info "Writing patch ${patch}"
+            diff -dupN "${file_orig}" "${file}" > "${patch}"
+        fi
+    else
+#       addon="${ADDONS}/${file#$DIR_UPDATED}"
+        addon="${ADDONS}/${suffix}"
+        addon_dir=$(dirname "${addon}")
+
+        info "Copying ${file} to ${addon}"
+
+        mkdir -p "${addon_dir}"
+        cp "${file}" "${addon}"
+    fi
+done
+

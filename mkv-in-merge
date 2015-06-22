@@ -1,0 +1,38 @@
+#!/bin/sh
+
+fonts_to_attach() {
+    find -iname "*.ttf" -exec echo --attach-file "{}" \;
+}
+
+videos() {
+    for extension in mkv avi mp4
+    do
+        find -maxdepth 1 -name "*.${extension}" -type f -print
+    done
+}
+
+subtitles() {
+    for format in ass ssa srt sub
+    do
+        if [ -f "$episode.$format" ]; then
+            echo "$episode.$format"
+            return
+        fi
+    done
+}
+
+results=$(basename "$0")-out
+mkdir -p "$results"
+
+set -x
+
+FONTS=$(fonts_to_attach)
+
+videos |\
+    while read video
+    do
+        episode=$(echo "$video" | sed 's/\.[^.]*$//')
+        subtitle=$(subtitles "$episode")
+        mkvmerge $@ "$video" "$subtitle" ${FONTS} -o "$results/$episode.mkv"
+    done
+

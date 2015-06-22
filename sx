@@ -1,0 +1,2 @@
+#!/bin/sh
+cd ${HOME} && nohup /usr/bin/startx >/dev/null 2>&1 &

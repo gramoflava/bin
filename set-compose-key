@@ -1,0 +1,9 @@
+#!/bin/sh
+
+[ -z "$1" ] && echo "set-xkb-option: KEY" >&2 && exit 1
+
+setxkbmap -option ''
+setxkbmap -option compose:$1 -option grp:caps_toggle -option grp_led:caps
+
+setxkbmap -print -verbose 10 | grep '^options:'
+
