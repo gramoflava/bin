@@ -1,0 +1,46 @@
+#!/bin/sh
+
+HOMEBIN=$(dirname "$0")
+HOMESECRETS="${HOMEBIN}"/.secrets
+[ -e "${HOMESECRETS}" ] && . "${HOMESECRETS}"
+
+#LVEE_LOGIN
+#LVEE_PASSWORD
+
+COOKIES=/tmp/.cookies.lvee
+
+prepare_cookies() {
+    wget --quiet -O /dev/null \
+        --save-cookies ${COOKIES} \
+        --post-data "login=${LVEE_LOGIN}&password=${LVEE_PASSWORD}&remember_me=1" \
+        "https://lvee.org/en/session"
+}
+
+cleanup() {
+    rm -f ${COOKIES}
+}
+
+lvee_particip() {
+    printf '%s: ' $1
+    echo $(( $( \
+        wget --quiet -O- \
+        --load-cookies ${COOKIES} \
+        "https://lvee.org/en/conference_registrations/LVEE%20${1}" \
+        | grep -c '<tr' \
+        ) - 1 ))
+}
+
+prepare_cookies
+trap cleanup EXIT
+
+if [ $# -eq 0 ]; then
+    lvee_particip `date +%Y`
+else
+    while [ -n "${1}" ]; do
+        lvee_particip "${1}"
+        shift
+    done
+fi
+
+cleanup
+
