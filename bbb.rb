@@ -6,12 +6,15 @@ require 'net/http'
 require 'date'
 require 'optparse'
 require 'ostruct'
+require 'base64'
 
 class BBBHelper
-  $debug = true
-
   def self.debug?
-    $debug ||= false
+    @debug ||= false
+  end
+
+  def self.debug=(value)
+    @debug = value
   end
 
   HTML_HEADER = "<html>\n<head>\n<title>Результаты</title>\n<meta http-equiv='Content-Type' content='text/html; charset=utf-8' />\n</head>\n<body>\n<ul style='list-style: none;'>"
@@ -47,19 +50,19 @@ class BBBHelper
   end
 
   def self.d(string)
-    stderr.puts "D," + string if debug?
+    STDERR.puts "D," + string if debug?
   end
 
   def self.i(string)
-    stderr.puts "I," + string
+    STDERR.puts "I," + string
   end
 
   def self.w(string)
-    stderr.puts "W," + string
+    STDERR.puts "W," + string if debug?
   end
 
   def self.e(string)
-    stderr.puts "E," + string
+    STDERR.puts "E," + string
   end
 
   def self.write_html_header(filename)
@@ -173,81 +176,144 @@ class BBBOptions
 
   def initialize
     @options = OpenStruct.new
-    @options.target      = nil
-    @options.login       = nil
-    @options.password    = nil
-    @options.from        = Date.today
-    @options.until       = nil
-    @options.format      = 'human'
-    @options.output_file = nil
-    @options.debug       = false
+    @options.command          = nil
+    @options.target           = nil
+    @options.login            = nil
+    @options.password         = nil
+    @options.ids              = []
+    @options.from             = Date.today
+    @options.until            = @options.from
+    @options.machine_friendly = false
+    @options.debug            = false
 
-    File.open(CONFIG_FILE) {|f| @options = YAML::load(f) }
-  rescue
-    @options = {}
-    STDERR.puts "W,Unable to read configuration from a file: " + CONFIG_FILE
+    load_config
+    setup_parser
   end
 
-  def parse(argv)
-    OptionParser.new do |opts|
-      opts.banner =  "Usage: bbb.rb COMMAND [OPTIONS...]"
-      opts.separator "BBBrute exists to help you with the analysis of timesheets"
-      opts.separator ""
-      opts.separator "COMMAND"
-      opts.separator "\thours     - Hours worked by person"
-      opts.separator "\twhere     - Where is the person now"
-      opts.separator "\tarrive    - First entry"
-      opts.separator "\tleave     - Latest exit"
-      opts.separator "\tremains   - Remaining workload for a week"
-      opts.separator "\tconfigure - Store some settings in the configuration file"
-      opts.separator ""
-
-      opts.on('-t', '--target HOST', String, 'https://example.org, Default: from configuration')                  {|s| @options.target      = s }
-      opts.on('-l', '--login LOGIN', String, 'User login to access target host, Default: from configuration')     {|s| @options.login       = s }
-      opts.on('-p', '--password PASSWORD', String, 'Password to access target host, Default: from configuration') {|s| @options.password    = s }
-      opts.on('-i', '--ids ID,..', Array, 'List of ids to check')                                                 {|a| @options.ids         = a.map{|i| Integer(i) } }
-      opts.on('-f', '--from DD.MM.YYYY', String, 'First day to request info, Default: today')                     {|s| @options.from        = Date.parse(s) }
-      opts.on('-u', '--until DD.MM.YYYY', String, 'First day to request info, Default: FROM')                     {|s| @options.until       = Date.parse(s) }
-      opts.on('-f', '--format FORMAT', String, 'Output format (csv, human), Default: human')                      {|s| @options.format      = s }
-      opts.on('-o', '--output-file FILENAME', String, 'File to print results')                                    {|s| @options.output_file = s }
-      opts.on('-d', '--[no-]debug', 'More info for debug purposes')                                               {|b| @options.debug       = b }
-
-      opts.on_tail('-h', '--help', 'Show help message') do
-        puts opts
-        exit 0
-      end
-
-    end.parse!(argv)
-  rescue
-    BBBHelper::e "Unexpected error while processing arguments. Resetting to interactive mode…"
+  def method_missing(method, *args, &block)
+    @options.send(method, *args, &block)
   end
 
-  def save
+  def setup_parser
+    @parser = OptionParser.new
+
+    @parser.banner =  "Usage: bbb.rb COMMAND [OPTIONS...]"
+    @parser.separator "BBBrute exists to help you with the analysis of timesheets"
+    @parser.separator ""
+    @parser.separator "COMMAND"
+    @parser.separator "\thours     - Hours worked by person"
+    @parser.separator "\twhere     - Where is the person now"
+    @parser.separator "\tarrive    - First entry"
+    @parser.separator "\tleave     - Latest exit"
+    @parser.separator "\tremains   - Remaining workload for a week"
+    @parser.separator "\tsave      - Store access settings in the configuration file"
+    @parser.separator ""
+
+    @parser.on('-t', '--target HOST', String,
+               'https://example.org, Default: From configuration') do |s|
+      @options.target = s
+    end
+
+    @parser.on('-l', '--login LOGIN', String,
+               'User login to access target host, Default: From configuration') do |s|
+      @options.login = s
+    end
+
+    @parser.on('-p', '--password PASSWORD', String,
+               'Password to access target host, Default: From configuration') do |s|
+      @options.password = s
+    end
+
+    @parser.on('-i', '--ids ID,..', Array, 'List of ids to check') do |a|
+      @options.ids = a.map{|i| Integer(i) }
+    end
+
+    @parser.on('-f', '--from DD.MM.YYYY', String,
+               'First day to request info, Default: today') do |s|
+      @options.from = Date.parse(s)
+    end
+
+    @parser.on('-u', '--until DD.MM.YYYY', String,
+               'First day to request info, Default: FROM') do |s|
+      @options.until = Date.parse(s)
+    end
+
+    @parser.on('-m', '--[no-]machine-friendly',
+               'Output format in CSV') do |b|
+      @options.machine_friendly = b
+    end
+
+    @parser.on('-d', '--[no-]debug',
+               'More info for debug purposes') do |b|
+      @options.debug = b
+    end
+
+    @parser.on_tail('-h', '--help',
+                    'Show help message') do
+      puts @parser
+      exit 0
+    end
+  rescue => e
+    BBBHelper.e 'Error in the options parser configuration.'
+  end
+
+  def load_config
+    File.open(CONFIG_FILE) do |f|
+      config = YAML::load(f)
+
+      @options.target   = config[:target]
+      @options.login    = config[:login]
+      @options.password = Base64.decode64(config[:password])
+
+      BBBHelper.d "Configuration loaded from the file: " + CONFIG_FILE
+    end
+  rescue => e
+    BBBHelper.w "Unable to load configuration from the file: " + CONFIG_FILE
+  end
+
+  def save_config
+    config = {
+      :target => @options.target,
+      :login => @options.login,
+      :password => Base64.encode64(@options.password)
+    }
+
     Dir.mkdir(File.dirname(CONFIG_FILE)) unless Dir.exist?(File.dirname(CONFIG_FILE))
-    File.open(CONFIG_FILE) {|f| @options = YAML::load(f) }
-  rescue
-    @options = {}
-    STDERR.puts "W,Unable to read configuration from a file: " + CONFIG_FILE
+    File.open(CONFIG_FILE, mode = "w") do |f|
+      f.puts(config.to_yaml)
+    end
+
+    puts "Configuration written to the file: " + CONFIG_FILE
+  rescue => e
+    BBBHelper.e "Unable to write configuration to the file(#{CONFIG_FILE})"
+    raise e
+  end
+
+  def parse(argv = ARGV)
+    @options.command = argv.shift
+    @parser.parse(argv)
+  rescue => e
+    BBBHelper::e "Unexpected error while processing arguments. Resetting to interactive mode…"
+    raise e
+  end
+
+  def get_options
+    @options.to_h
   end
 end
 
 
 begin
+  opts = BBBOptions.new
+  opts.parse
+  BBBHelper.debug = opts.debug
 
-  #  params = parse_argv
-  #  bbb = BBBrute.new
-  #
-  #  BBBHelper::d "Wha?"
-  #  bbb.auth
-  #
-  #  BBBHelper::write_html_header(OUTPUT_FILE)
-  #
-  #  start_date = Date.today - 1
-  #
-  #  bbb.doors({:id => id, :start_date => start_date})
-  #
+  BBBHelper.d "Parsed options: " + opts.get_options.to_s
 
-  parse_options
+  case opts.command
+  when 'save'
+    opts.save_config
+  end
 
 rescue => exception
   STDERR.puts "E: #{exception}"
