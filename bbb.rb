@@ -17,9 +17,6 @@ class BBBHelper
     @debug = value
   end
 
-  HTML_HEADER = "<html>\n<head>\n<title>Результаты</title>\n<meta http-equiv='Content-Type' content='text/html; charset=utf-8' />\n</head>\n<body>\n<ul style='list-style: none;'>"
-  HTML_FOOTER = "</ul>\n</body>\n</html>"
-
   def self.debug_http_get_print_headers(request)
     return unless debug?
 
@@ -49,37 +46,27 @@ class BBBHelper
     raise "Cookies not extracted for an unknown reason."
   end
 
-  def self.d(string)
-    STDERR.puts "D," + string if debug?
-  end
-
-  def self.i(string)
-    STDERR.puts "I," + string
-  end
-
-  def self.w(string)
-    STDERR.puts "W," + string if debug?
-  end
-
-  def self.e(string)
-    STDERR.puts "E," + string
-  end
-
-  def self.write_html_header(filename)
-    File.open(filename, "w") do |file|
-      file.puts(HTML_HEADER)
+  def self.d(lines)
+    if debug?
+      lines.split("\n").each do |line|
+        STDERR.puts "D,#{line}"
+      end
     end
   end
 
-  def self.write_html_li(filename, li)
-    File.open(filename, "a+") do |file|
-      file.puts(li)
+  def self.w(lines)
+    if debug?
+      lines.split("\n").each do |line|
+        STDERR.puts "W,#{line}"
+      end
     end
   end
 
-  def self.write_html_footer(filename)
-    File.open(filename, "a+") do |file|
-      file.puts(HTML_FOOTER)
+  def self.e(lines)
+    if debug?
+      lines.split("\n").each do |line|
+        STDERR.puts "E,#{line}"
+      end
     end
   end
 end
@@ -92,20 +79,16 @@ class BBBrute
     Doors     =  3
   end
 
-  LOGIN_PAGE       = 'misc/login.asp'
-  DOORS_PAGE       = 'Door/DoorPers.asp'
+  LOGIN_PAGE = 'misc/login.asp'
+  DOORS_PAGE = 'Door/DoorPers.asp'
+  USERAGENT  = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1'
 
-  def initialize
-    load_credentials
+  def initialize(options)
+    @options = options
 
-    @bbb_uri = URI(target)
-    @bbb_login_uri = URI.join(target, LOGIN_PAGE)
-    @bbb_doors_uri = URI.join(target, DOORS_PAGE)
+    uri = URI(@options.target)
 
-    @http = Net::HTTP.start(bbb_uri.host, bbb_uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE)
-  end
-
-  def ask_credentials
+    @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE)
   end
 
   def query(stat, params)
@@ -120,8 +103,9 @@ class BBBrute
   end
 
   def auth
-    request = Net::HTTP::Get.new(login_uri.request_uri)
-    request.basic_auth(credentials[:login], credentials[:password])
+    uri = URI.join(@options.target, LOGIN_PAGE)
+    request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
+    request.basic_auth(@options.login, @options.password)
     response = @http.request(request)
 
     BBBHelper::debug_http_get_print_headers(request)
@@ -140,32 +124,29 @@ class BBBrute
     date - date.wday + 7
   end
 
-  def doors(param)
-    id = param[:id]
-    start_date = param[:start_date]
-    end_date = param[:end_date]
-    end_date ||= start_date
+  def doors
+    uri = URI.join(@options.target + "/" + DOORS_PAGE + "?" + query(STAT::Times, {:id => @options.id, :bdate => @options.from, :edate => @options.until}))
 
-    url = "https://#{TARGET_HOST}/#{DOORS_PAGE}?" + query(STAT::Times, {:id => id, :bdate => start_date, :edate => end_date})
-    uri = URI(url)
-
-    request = Net::HTTP::Get.new(uri.request_uri)
-    request.basic_auth(credentials[:login], credentials[:password])
+    request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
+    request.basic_auth(@options.login, @options.password)
     request.add_field("cookie", $cookies)
     response = @http.request(request)
 
     BBBHelper::debug_http_get_print_headers(request)
     BBBHelper::debug_http_response_print_headers(response)
 
-    BBBHelper::d "#{id} #{response.inspect}"
+    BBBHelper::d "#{@options.id} #{response.inspect}"
 
-    body = response.body
+    body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    link = body.match(/<a href=\.\.\/misc\/PersInfo\.asp\?ID=#{id}>(.*)<\/a>/)
+    BBBHelper::d "BODY"
+    BBBHelper::d body
+    BBBHelper::d "END BODY"
+
+    link = body.match(/<a href=\.\.\/misc\/PersInfo\.asp\?ID=[0-9]+>(.*)<\/a>/)
 
     unless link.nil?
-      li = "<li>#{id} &rarr; <a href='#{uri}'>#{link[1].force_encoding('CP1251').encode('UTF-8')}</a></li>"
-      BBBHelper::write_html_li(OUTPUT_FILE, li)
+      puts link
     end
   end
 end
@@ -304,17 +285,25 @@ end
 
 
 begin
-  opts = BBBOptions.new
-  opts.parse
-  BBBHelper.debug = opts.debug
+  options = BBBOptions.new
 
-  BBBHelper.d "Parsed options: " + opts.get_options.to_s
+  options.parse(ARGV)
 
-  case opts.command
+  BBBHelper.debug = options.debug
+  BBBHelper.d "Parsed options: " + options.get_options.to_s
+
+  case options.command
+  when 'doors'
+    b = BBBrute.new(options)
+    b.auth
+    b.doors
+
   when 'save'
-    opts.save_config
+    options.save_config
+  else
+    BBBHelper.e "Unrecognized command: " + options.command.to_s
+    exit 1
   end
-
 rescue => exception
   STDERR.puts "E: #{exception}"
   raise exception
