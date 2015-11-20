@@ -178,7 +178,7 @@ class BBBOptions
   def setup_parser
     @parser = OptionParser.new
 
-    @parser.banner =  "Usage: bbb.rb COMMAND [OPTIONS...]"
+    @parser.banner =  "Usage: #{File.basename($0)} COMMAND [OPTIONS...]"
     @parser.separator "BBBrute exists to help you with the analysis of timesheets"
     @parser.separator ""
     @parser.separator "COMMAND"
