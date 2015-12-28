@@ -153,7 +153,7 @@ end
 
 
 class BBBOptions
-  CONFIG_FILE = File.join(Dir.home, '.bbb/config.yml')
+  CONFIG_FILE = File.join(Dir.home, '.bbbrute/config.yml')
 
   def initialize
     @options = OpenStruct.new
