@@ -21,13 +21,33 @@ cleanup() {
 }
 
 lvee_particip() {
-    printf '%s: ' $1
     echo $(( $( \
         wget --quiet -O- \
         --load-cookies ${COOKIES} \
         "https://lvee.org/en/conference_registrations/LVEE%20${1}" \
         | grep -c '<tr' \
         ) - 1 ))
+}
+
+lvee_particip_winter() {
+    echo $(( $( \
+        wget --quiet -O- \
+        --load-cookies ${COOKIES} \
+        "https://lvee.org/en/conference_registrations/LVEE%20Winter%20${1}" \
+        | grep -c '<tr' \
+        ) - 1 ))
+}
+
+print_lvee_year() {
+    printf '%s: %3s %3s\n' "${1}" $(format_no "${2}") $(format_no "${3}")
+}
+
+format_no() {
+    if [ "$1" = "-1" ]; then
+        echo '-'
+    else
+        echo $1
+    fi
 }
 
 prepare_cookies
@@ -37,7 +57,9 @@ if [ $# -eq 0 ]; then
     lvee_particip `date +%Y`
 else
     while [ -n "${1}" ]; do
-        lvee_particip "${1}"
+        lvee_summer=$(lvee_particip "${1}")
+        lvee_winter=$(lvee_particip_winter "${1}")
+        print_lvee_year "${1}" "${lvee_winter}" "${lvee_summer}"
         shift
     done
 fi
