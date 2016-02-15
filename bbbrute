@@ -17,18 +17,18 @@ class BBBHelper
     @debug = value
   end
 
-  def self.debug_http_get_print_headers(request)
+  def self.debug_http_get_headers(request)
     return unless debug?
 
-    STDERR.puts "GET Request:"
+    STDERR.puts 'GET Request:'
     STDERR.puts request.path
     request.each_header {|key,value| STDERR.puts "| #{key} = #{value}" }
   end
 
-  def self.debug_http_response_print_headers(response)
+  def self.debug_http_response_headers(response)
     return unless debug?
 
-    STDERR.puts "Response:"
+    STDERR.puts 'Response:'
     STDERR.puts response.inspect
     response.header.each_header {|key,value| STDERR.puts "| #{key} = #{value}" }
   end
@@ -43,10 +43,10 @@ class BBBHelper
       $cookies = cookies_array.join('; ')
     end
   rescue
-    raise "Cookies not extracted for an unknown reason."
+    raise 'Cookies not extracted for an unknown reason.'
   end
 
-  def self.d(lines)
+  def self.p_debug(lines)
     if debug?
       lines.split("\n").each do |line|
         STDERR.puts "D,#{line}"
@@ -54,7 +54,7 @@ class BBBHelper
     end
   end
 
-  def self.w(lines)
+  def self.p_warning(lines)
     if debug?
       lines.split("\n").each do |line|
         STDERR.puts "W,#{line}"
@@ -62,7 +62,7 @@ class BBBHelper
     end
   end
 
-  def self.e(lines)
+  def self.p_error(lines)
     if debug?
       lines.split("\n").each do |line|
         STDERR.puts "E,#{line}"
@@ -71,12 +71,13 @@ class BBBHelper
   end
 end
 
+
 class BBBrute
   module STAT
-    Lateness  =  0
-    Absence   =  1
-    Times     =  2
-    Doors     =  3
+    LATENESS  =  0
+    ABSENCE   =  1
+    TIMES     =  2
+    DOORS     =  3
   end
 
   LOGIN_PAGE = 'misc/login.asp'
@@ -86,7 +87,7 @@ class BBBrute
   def initialize(options)
     @options = options
 
-    uri = URI(@options.target)
+    uri = URI(@options.server)
 
     @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE)
   end
@@ -95,7 +96,7 @@ class BBBrute
     id = params[:id]
     bdate = params[:bdate]
     edate = params[:edate]
-    query = "Bt=%CF%EE%E8%F1%EA&Period=0"
+    query = 'Bt=%CF%EE%E8%F1%EA&Period=0'
     query += "&RG=#{stat}"
     query += "&Empl=#{id}" if id
     query += "&bD=#{bdate.day}&bMn=#{bdate.month}&bYr=#{bdate.year}"
@@ -103,15 +104,15 @@ class BBBrute
   end
 
   def auth
-    uri = URI.join(@options.target, LOGIN_PAGE)
+    uri = URI.join(@options.server, LOGIN_PAGE)
     request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
     request.basic_auth(@options.login, @options.password)
     response = @http.request(request)
 
-    BBBHelper::debug_http_get_print_headers(request)
-    BBBHelper::debug_http_response_print_headers(response)
+    BBBHelper::debug_http_get_headers(request)
+    BBBHelper::debug_http_response_headers(response)
 
-    raise "Authorization failed (401)" if response.code == '401'
+    raise 'Authorization failed (401)' if response.code == '401'
 
     $cookies = BBBHelper::http_extract_cookies(response)
   end
@@ -125,23 +126,23 @@ class BBBrute
   end
 
   def doors
-    uri = URI.join(@options.target + "/" + DOORS_PAGE + "?" + query(STAT::Times, {:id => @options.id, :bdate => @options.from, :edate => @options.until}))
+    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + query(STAT::TIMES, {:id => @options.id, :bdate => @options.from, :edate => @options.until}))
 
     request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
     request.basic_auth(@options.login, @options.password)
-    request.add_field("cookie", $cookies)
+    request.add_field('cookie', $cookies)
     response = @http.request(request)
 
-    BBBHelper::debug_http_get_print_headers(request)
-    BBBHelper::debug_http_response_print_headers(response)
+    BBBHelper::debug_http_get_headers(request)
+    BBBHelper::debug_http_response_headers(response)
 
-    BBBHelper::d "#{@options.id} #{response.inspect}"
+    BBBHelper::p_debug "#{@options.id} #{response.inspect}"
 
     body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    BBBHelper::d "BODY"
-    BBBHelper::d body
-    BBBHelper::d "END BODY"
+    BBBHelper::p_debug 'BODY'
+    BBBHelper::p_debug body
+    BBBHelper::p_debug 'END BODY'
 
     link = body.match(/<a href=\.\.\/misc\/PersInfo\.asp\?ID=[0-9]+>(.*)<\/a>/)
 
@@ -157,124 +158,127 @@ class BBBOptions
 
   def initialize
     @options = OpenStruct.new
-    @options.command          = nil
-    @options.target           = nil
+    @options.server           = nil
     @options.login            = nil
     @options.password         = nil
     @options.ids              = []
     @options.from             = Date.today
     @options.until            = @options.from
     @options.machine_friendly = false
+    @options.command          = nil
     @options.debug            = false
 
     load_config
-    setup_parser
+    setup_parsers
   end
 
   def method_missing(method, *args, &block)
     @options.send(method, *args, &block)
   end
 
-  def setup_parser
-    @parser = OptionParser.new
+  def setup_parsers
+    @parsers = {}
 
-    @parser.banner =  "Usage: #{File.basename($0)} COMMAND [OPTIONS...]"
-    @parser.separator "BBBrute exists to help you with the analysis of timesheets"
-    @parser.separator ""
-    @parser.separator "COMMAND"
-    @parser.separator "\thours     - Hours worked by person"
-    @parser.separator "\twhere     - Where is the person now"
-    @parser.separator "\tarrive    - First entry"
-    @parser.separator "\tleave     - Latest exit"
-    @parser.separator "\tremains   - Remaining workload for a week"
-    @parser.separator "\tsave      - Store access settings in the configuration file"
-    @parser.separator ""
+    @parsers[''] = OptionParser.new
 
-    @parser.on('-t', '--target HOST', String,
-               'https://example.org, Default: From configuration') do |s|
-      @options.target = s
+    @parsers[''].banner =  "Usage: #{File.basename($0)} [OPTION...] COMMAND [COMMAND OPTION...]"
+    @parsers[''].separator 'BBBrute exists to help you with the analysis of timesheets'
+    @parsers[''].separator ''
+    @parsers[''].separator 'COMMAND'
+    @parsers[''].separator "\thours     - Hours worked by person"
+    @parsers[''].separator "\twhere     - Where is the person now"
+    @parsers[''].separator "\tfirst     - First entry"
+    @parsers[''].separator "\tlast      - Latest exit"
+    @parsers[''].separator "\trest      - Remaining workload for a week"
+    @parsers[''].separator "\tsave      - Store access settings in the configuration file"
+    @parsers[''].separator ''
+
+    @parsers[''].on('-h', '--help',
+               'Show help message') do
+      puts @parsers['']
+      exit 0
     end
 
-    @parser.on('-l', '--login LOGIN', String,
-               'User login to access target host, Default: From configuration') do |s|
-      @options.login = s
-    end
-
-    @parser.on('-p', '--password PASSWORD', String,
-               'Password to access target host, Default: From configuration') do |s|
-      @options.password = s
-    end
-
-    @parser.on('-i', '--ids ID,..', Array, 'List of ids to check') do |a|
-      @options.ids = a.map{|i| Integer(i) }
-    end
-
-    @parser.on('-f', '--from DD.MM.YYYY', String,
-               'First day to request info, Default: today') do |s|
-      @options.from = Date.parse(s)
-    end
-
-    @parser.on('-u', '--until DD.MM.YYYY', String,
-               'First day to request info, Default: FROM') do |s|
-      @options.until = Date.parse(s)
-    end
-
-    @parser.on('-m', '--[no-]machine-friendly',
-               'Output format in CSV') do |b|
-      @options.machine_friendly = b
-    end
-
-    @parser.on('-d', '--[no-]debug',
+    @parsers[''].on('-d', '--[no-]debug',
                'More info for debug purposes') do |b|
       @options.debug = b
     end
 
-    @parser.on_tail('-h', '--help',
-                    'Show help message') do
-      puts @parser
-      exit 0
+    @parsers[''].on('-s', '--server HOST', String,
+               'https://example.org, Default: From configuration') do |s|
+      @options.server = s
     end
-  rescue => e
-    BBBHelper.e 'Error in the options parser configuration.'
+
+    @parsers[''].on('-l', '--login LOGIN', String,
+               'User login to access target server, Default: From configuration') do |s|
+      @options.login = s
+    end
+
+    @parsers[''].on('-p', '--password PASSWORD', String,
+               'Password to access target server, Default: From configuration') do |s|
+      @options.password = s
+    end
+
+    @parsers[''].on('-m', '--[no-]machine-friendly',
+               'Output data in CSV') do |b|
+      @options.machine_friendly = b
+    end
+
+    @parsers[''].on('-i', '--ids ID,...', Array, 'List of ids to check') do |a|
+      @options.ids = a.map{|i| Integer(i) }
+    end
+
+    @parsers[''].on('-f', '--from DD.MM.YYYY', String,
+               'First day to request info, Default: today') do |s|
+      @options.from = Date.parse(s)
+    end
+
+    @parsers[''].on('-u', '--until DD.MM.YYYY', String,
+               'First day to request info, Default: FROM') do |s|
+      @options.until = Date.parse(s)
+    end
+
+  rescue
+    BBBHelper.p_error 'Error in the options parser configuration.'
   end
 
   def load_config
     File.open(CONFIG_FILE) do |f|
       config = YAML::load(f)
 
-      @options.target   = config[:target]
+      @options.server   = config[:server]
       @options.login    = config[:login]
       @options.password = Base64.decode64(config[:password])
 
-      BBBHelper.d "Configuration loaded from the file: " + CONFIG_FILE
+      BBBHelper.p_debug 'Configuration loaded from the file: ' + CONFIG_FILE
     end
-  rescue => e
-    BBBHelper.w "Unable to load configuration from the file: " + CONFIG_FILE
+  rescue
+    BBBHelper.p_warning 'Unable to load configuration from the file: ' + CONFIG_FILE
   end
 
   def save_config
     config = {
-      :target => @options.target,
+      :server => @options.server,
       :login => @options.login,
       :password => Base64.encode64(@options.password)
     }
 
     Dir.mkdir(File.dirname(CONFIG_FILE)) unless Dir.exist?(File.dirname(CONFIG_FILE))
-    File.open(CONFIG_FILE, mode = "w") do |f|
+    File.open(CONFIG_FILE, mode = 'w') do |f|
       f.puts(config.to_yaml)
     end
 
-    puts "Configuration written to the file: " + CONFIG_FILE
+    puts 'Configuration written to the file: ' + CONFIG_FILE
   rescue => e
-    BBBHelper.e "Unable to write configuration to the file(#{CONFIG_FILE})"
+    BBBHelper.p_error "Unable to write configuration to the file(#{CONFIG_FILE})"
     raise e
   end
 
   def parse(argv = ARGV)
     @options.command = argv.shift
-    @parser.parse(argv)
+    @parsers[''].parse(argv)
   rescue => e
-    BBBHelper::e "Unexpected error while processing arguments. Resetting to interactive mode…"
+    BBBHelper::p_error 'Unexpected error while processing arguments. Aborting…'
     raise e
   end
 
@@ -290,7 +294,7 @@ begin
   options.parse(ARGV)
 
   BBBHelper.debug = options.debug
-  BBBHelper.d "Parsed options: " + options.get_options.to_s
+  BBBHelper.p_debug 'Parsed options: ' + options.get_options.to_s
 
   case options.command
   when 'doors'
@@ -301,7 +305,7 @@ begin
   when 'save'
     options.save_config
   else
-    BBBHelper.e "Unrecognized command: " + options.command.to_s
+    BBBHelper.p_error 'Unrecognized command: ' + options.command.to_s
     exit 1
   end
 rescue => exception
