@@ -156,7 +156,30 @@ end
 class BBBOptions
   CONFIG_FILE = File.join(Dir.home, '.bbbrute/config.yml')
 
-  MSG_COMMAND_NAME = 'Command: %s'
+  CMD_GLOBAL      = ''
+  CMD_HOURS       = 'hours'
+  CMD_LOCATE      = 'locate'
+  CMD_FIRST       = 'first'
+  CMD_LAST        = 'last'
+  CMD_SAVE        = 'save'
+
+  MSG_COMMAND_NAME            = '%s (%s)'
+  MSG_USAGE                   = 'Usage: %s [OPTION...] COMMAND COMMAND_ARG...'
+  MSG_DESCRIPTION             = 'BBBrute exists to help you with the analysis of timesheets'
+  MSG_DESCRIPTION_HOURS       = 'Get hours worked by person'
+  MSG_DESCRIPTION_LOCATE      = 'Find, where is person now, looking by the last entrie'
+  MSG_DESCRIPTION_FIRST       = 'List all first entries of the person by day'
+  MSG_DESCRIPTION_LAST        = 'List all last entries of the person by day'
+  MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
+  MSG_OPTION_HELP             = 'Show help message'
+  MSG_OPTION_DEBUG            = 'More info for debug purposes'
+  MSG_OPTION_SERVER           = 'Select target for BBBrute (example: https://example.org)'
+  MSG_OPTION_LOGIN            = 'Domain login of the user with access to the target server'
+  MSG_OPTION_PASSWORD         = 'Password of th user with access to the target server'
+  MSG_OPTION_MACHINE          = 'Output data as a JSON for further processing'
+  MSG_ARGUMENT_ID             = 'ID of the person to check'
+  MSG_ARGUMENT_FROM           = 'First day to request info, Default: today'
+  MSG_ARGUMENT_TILL           = 'Last day to request info, Default: FROM'
 
   def initialize
     @options = OpenStruct.new
@@ -185,162 +208,132 @@ class BBBOptions
   end
 
   def define_parser_global
-    parser_name = ''
+    @parsers[CMD_GLOBAL] = OptionParser.new
 
-    @parsers[parser_name] = OptionParser.new
+    @parsers[CMD_GLOBAL].banner = MSG_USAGE % File.basename($0)
+    @parsers[CMD_GLOBAL].separator MSG_DESCRIPTION
+    @parsers[CMD_GLOBAL].separator ''
+    @parsers[CMD_GLOBAL].separator 'OPTIONS'
 
-    @parsers[parser_name].banner =  "Usage: #{File.basename($0)} [OPTION...] COMMAND COMMAND_ARG..."
-    @parsers[parser_name].separator 'BBBrute exists to help you with the analysis of timesheets'
-    @parsers[parser_name].separator ''
-    @parsers[parser_name].separator 'OPTIONS'
-
-    @parsers[parser_name].on('-h', '--help',
-               'Show help message') do
+    @parsers[CMD_GLOBAL].on('-h', '--help', MSG_OPTION_HELP) do
       exec_help_printout
     end
 
-    @parsers[parser_name].on('-d', '--[no-]debug',
-               'More info for debug purposes') do |b|
+    @parsers[CMD_GLOBAL].on('-d', '--[no-]debug', MSG_OPTION_DEBUG) do |b|
       @options.debug = b
     end
 
-    @parsers[parser_name].on('-s', '--server HOSTNAME', String,
-               'Target for BBBrute: https://example.org') do |s|
+    @parsers[CMD_GLOBAL].on('-s', '--server HOSTNAME', String, MSG_OPTION_SERVER) do |s|
       @options.server = s
     end
 
-    @parsers[parser_name].on('-l', '--login LOGIN', String,
-               'User login to access target server') do |s|
+    @parsers[CMD_GLOBAL].on('-l', '--login LOGIN', String, MSG_OPTION_LOGIN) do |s|
       @options.login = s
     end
 
-    @parsers[parser_name].on('-p', '--password PASSWORD', String,
-               'Password to access target server') do |s|
+    @parsers[CMD_GLOBAL].on('-p', '--password PASSWORD', String, MSG_OPTION_PASSWORD) do |s|
       @options.password = s
     end
 
-    @parsers[parser_name].on('-m', '--[no-]machine-friendly',
-               'Output data in CSV') do |b|
+    @parsers[CMD_GLOBAL].on('-m', '--[no-]machine-friendly', MSG_OPTION_MACHINE) do |b|
       @options.machine_friendly = b
     end
 
-    @parsers[parser_name].separator ''
+    @parsers[CMD_GLOBAL].separator ''
   end
 
   def define_parser_hours
-    parser_name = 'hours'
-
     @options.command_args       = OpenStruct.new
     @options.command_args.id    = nil
     @options.command_args.from  = nil
     @options.command_args.until = nil
 
-    @parsers[parser_name] = OptionParser.new
-    @parsers[parser_name].banner = MSG_COMMAND_NAME % parser_name
-    @parsers[parser_name].separator 'Get hours worked by person.'
+    @parsers[CMD_HOURS] = OptionParser.new
+    @parsers[CMD_HOURS].banner = MSG_COMMAND_NAME % [CMD_HOURS, MSG_DESCRIPTION_HOURS]
 
-    @parsers[parser_name].on('-i', '--id ID', Integer, 'ID of the person to check') do |i|
+    @parsers[CMD_HOURS].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |i|
       @options.command_args.id = i
     end
 
-    @parsers[parser_name].on('-f', '--from DD.MM.YYYY', String,
-               'First day to request info, Default: today') do |s|
+    @parsers[CMD_HOURS].on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM) do |s|
       @options.command_args.from = Date.parse(s)
     end
 
-    @parsers[parser_name].on('-t', '--till DD.MM.YYYY', String,
-               'First day to request info, Default: FROM') do |s|
+    @parsers[CMD_HOURS].on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL) do |s|
       @options.command_args.until = Date.parse(s)
     end
 
-    @parsers[parser_name].separator ''
+    @parsers[CMD_HOURS].separator ''
   end
 
-  def define_parser_where
-    parser_name = 'where'
-
+  def define_parser_locate
     @options.command_args       = OpenStruct.new
     @options.command_args.id    = nil
 
-    @parsers[parser_name] = OptionParser.new
-    @parsers[parser_name].banner = MSG_COMMAND_NAME % parser_name
-    @parsers[parser_name].separator 'Locate person'
+    @parsers[CMD_LOCATE] = OptionParser.new
+    @parsers[CMD_LOCATE].banner = MSG_COMMAND_NAME % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
 
-    @parsers[parser_name].on('-i', '--id ID', Integer, 'ID of the person to check') do |i|
+    @parsers[CMD_LOCATE].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |i|
       @options.command_args.id = i
     end
 
-    @parsers[parser_name].separator ''
+    @parsers[CMD_LOCATE].separator ''
   end
 
   def define_parser_first
-    parser_name = 'first'
-
     @options.command_args       = OpenStruct.new
     @options.command_args.id    = nil
     @options.command_args.from  = nil
     @options.command_args.until = nil
 
-    @parsers[parser_name] = OptionParser.new
-    @parsers[parser_name].banner = MSG_COMMAND_NAME % parser_name
-    @parsers[parser_name].separator 'Get hours worked by person.'
+    @parsers[CMD_FIRST] = OptionParser.new
+    @parsers[CMD_FIRST].banner = MSG_COMMAND_NAME % [CMD_FIRST, MSG_DESCRIPTION_FIRST]
 
-    @parsers[parser_name].on('-i', '--id ID', Integer, 'ID of the person to check') do |i|
+    @parsers[CMD_FIRST].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |i|
       @options.command_args.id = i
     end
 
-    @parsers[parser_name].on('-f', '--from DD.MM.YYYY', String,
-               'First day to request info, Default: today') do |s|
+    @parsers[CMD_FIRST].on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM) do |s|
       @options.command_args.from = Date.parse(s)
     end
 
-    @parsers[parser_name].on('-t', '--till DD.MM.YYYY', String,
-               'First day to request info, Default: FROM') do |s|
+    @parsers[CMD_FIRST].on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL) do |s|
       @options.command_args.until = Date.parse(s)
     end
 
-    @parsers[parser_name].separator ''
+    @parsers[CMD_FIRST].separator ''
   end
 
   def define_parser_last
-    parser_name = 'last'
-
     @options.command_args       = OpenStruct.new
     @options.command_args.id    = nil
     @options.command_args.from  = nil
     @options.command_args.until = nil
 
-    @parsers[parser_name] = OptionParser.new
-    @parsers[parser_name].banner = MSG_COMMAND_NAME % parser_name
-    @parsers[parser_name].separator 'List all last entries of the person'
+    @parsers[CMD_LAST] = OptionParser.new
+    @parsers[CMD_LAST].banner = MSG_COMMAND_NAME % [CMD_LAST, MSG_DESCRIPTION_LAST]
 
-    @parsers[parser_name].on('-i', '--id ID', Integer, 'ID of the person to check') do |a|
+    @parsers[CMD_LAST].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |a|
       @options.command_args.id = i
     end
 
-    @parsers[parser_name].on('-f', '--from DD.MM.YYYY', String,
-               'First day to request info, Default: today') do |s|
+    @parsers[CMD_LAST].on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM) do |s|
       @options.command_args.from = Date.parse(s)
     end
 
-    @parsers[parser_name].on('-t', '--till DD.MM.YYYY', String,
-               'First day to request info, Default: FROM') do |s|
+    @parsers[CMD_LAST].on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL) do |s|
       @options.command_args.until = Date.parse(s)
     end
 
-    @parsers[parser_name].separator ''
+    @parsers[CMD_LAST].separator ''
   end
 
   def define_parser_save
-    parser_name = 'save'
-
     @options.command_args       = nil
 
-    @parsers[parser_name] = OptionParser.new
-    @parsers[parser_name].banner = MSG_COMMAND_NAME % parser_name
-    @parsers[parser_name].separator 'Save entered global options for future use'
-
-    @parsers[parser_name].separator ''
+    @parsers[CMD_SAVE] = OptionParser.new
+    @parsers[CMD_SAVE].banner = MSG_COMMAND_NAME % [CMD_SAVE, MSG_DESCRIPTION_SAVE]
+    @parsers[CMD_SAVE].separator ''
   end
 
   def setup_parsers
@@ -348,7 +341,7 @@ class BBBOptions
 
     define_parser_global
     define_parser_hours
-    define_parser_where
+    define_parser_locate
     define_parser_first
     define_parser_last
     define_parser_save
