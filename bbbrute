@@ -382,7 +382,7 @@ class BBBOptions
   end
 
   def parse(argv = ARGV)
-    argv = @parsers[''].parse(argv)
+    @parsers[CMD_GLOBAL].order!(argv)
     @options.command = argv.shift
     @parsers[command].parse(argv) if command
   rescue => e
