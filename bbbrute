@@ -82,6 +82,7 @@ class BBBrute
 
   def initialize(options)
     @options = options
+    BBBHelper::p_debug "Initializing BBBrute with options: #{options}"
 
     uri = URI(@options.server)
 
@@ -122,7 +123,7 @@ class BBBrute
   end
 
   def doors
-    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + query(STAT::TIMES, {:id => @options.id, :bdate => @options.from, :edate => @options.to}))
+    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + query(STAT::TIMES, {:id => @options.command_args.id, :bdate => @options.command_args.from, :edate => @options.command_args.to}))
 
     request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
     request.basic_auth(@options.login, @options.password)
@@ -132,7 +133,7 @@ class BBBrute
     BBBHelper::debug_http_get_headers(request)
     BBBHelper::debug_http_response_headers(response)
 
-    BBBHelper::p_debug "#{@options.id} #{response.inspect}"
+    BBBHelper::p_debug "#{@options.command_args.id} #{response.inspect}"
 
     body = response.body.force_encoding('CP1251').encode('UTF-8')
 
@@ -364,11 +365,9 @@ begin
 
   case options.command
   when BBBOptions::CMD_HOURS
-    puts 'Placeholder command: ' + options.command.to_s
-    exit 0
-    #b = BBBrute.new(options)
-    #b.auth
-    #b.doors
+    b = BBBrute.new(options)
+    b.auth
+    b.doors
   when BBBOptions::CMD_LOCATE
     puts 'Placeholder command: ' + options.command.to_s
   when BBBOptions::CMD_FIRST
