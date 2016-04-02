@@ -7,6 +7,8 @@ require 'date'
 require 'optparse'
 require 'ostruct'
 require 'base64'
+require 'pp'
+
 
 class BBBHelper
   def self.debug?
@@ -53,10 +55,8 @@ class BBBHelper
   end
 
   def self.p_warning(lines)
-    if debug?
-      lines.split("\n").each do |line|
-        STDERR.puts "W,#{line}"
-      end
+    lines.split("\n").each do |line|
+      STDERR.puts "W,#{line}"
     end
   end
 
@@ -137,14 +137,97 @@ class BBBrute
 
     body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    BBBHelper::p_debug 'BODY'
-    BBBHelper::p_debug body
-    BBBHelper::p_debug 'END BODY'
+    # BBBHelper::p_debug 'BODY'
+    # BBBHelper::p_debug body
+    # BBBHelper::p_debug 'END BODY'
 
-    link = body.match(/<a href=\.\.\/misc\/PersInfo\.asp\?ID=[0-9]+>(.*)<\/a>/)
+    parsed_data = nil
 
-    unless link.nil?
-      puts link
+    if body_dissect = body.match(/<TR><TD ALIGN=Right rowspan=(\d+)>1.<TD rowspan=\d+><a href=\.\.\/misc\/PersInfo\.asp\?ID=(\d+)>(.*?)<\/a><\/td>(.*)<\/tr><TR><TD ALIGN=Left bgcolor = Silver>/)
+
+      parsed_data= {}
+      parsed_data[:count] = body_dissect.captures[0].to_i - 1
+      BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
+
+      parsed_data[:id] = body_dissect.captures[1].to_i
+      BBBHelper.p_debug "Id   = " + parsed_data[:id].to_s
+
+      parsed_data[:name] = body_dissect.captures[2]
+      BBBHelper.p_debug "Name = " + parsed_data[:name]
+
+      rawdata = body_dissect.captures[3]
+      BBBHelper.p_debug "Data = #{rawdata.length}B"
+
+      parsed_data[:hours] = rawdata.split('<tr>').map do |line|
+        hours_data = {
+          holiday:        false,
+          date:           nil,
+          hours:          nil,
+          rate:           nil,
+          day_off:        nil,
+          vacation:       nil,
+          unpaid_leave:   nil,
+          sick_leave:     nil,
+          business_trip:  nil,
+          not_considered: nil,
+          comment:        ''
+        }
+
+        if h = line.scan(/<TD.*?>(.*?)<\/TD>/)
+          if h[0][0].match(/Red/)
+            hours_data[:holiday] = true
+          end
+
+          hours_data[:date]           = h[0][0].gsub(/[^0-9.]+/, '')
+          hours_data[:hours]          = h[1][0].gsub(/[^0-9:]+/, '')
+          hours_data[:rate]           = h[2][0].to_f
+          hours_data[:day_off]        = h[3][0] != '&nbsp'
+          hours_data[:vacation]       = h[4][0] != '&nbsp'
+          hours_data[:unpaid_leave]   = h[5][0] != '&nbsp'
+          hours_data[:sick_leave]     = h[6][0] != '&nbsp'
+          hours_data[:business_trip]  = h[7][0] != '&nbsp'
+          hours_data[:not_considered] = h[8][0] != '&nbsp'
+
+          if hours_data[:not_considered] and c = h[8][0].match(/ALT = "(.*?)"/)
+            hours_data[:comment] = c.captures[0]
+          end
+        end
+
+        hours_data
+      end
+    end
+
+    parsed_data
+  end
+
+  def self.print_hours(data)
+    unless data
+      BBBHelper.p_error "No data found"
+      exit 0
+    end
+
+    puts "#{data[:name]} (#{data[:id]})"
+    data[:hours].each do |h|
+      printf("%1s %10s  %8s  %4.2f  %1s %1s %1s %1s %1s %1s  %s\n",
+             h[:holiday] ? 'H' : '',
+             h[:date],
+             h[:hours],
+             h[:rate],
+             h[:day_off] ? 'D' : '',
+             h[:vacation] ? 'V' : '',
+             h[:unpaid_leave] ? 'U' : '',
+             h[:sick_leave] ? 'S' : '',
+             h[:business_trip] ? 'B' : '',
+             h[:not_considered] ? 'N' : '',
+             h[:comment])
+    end
+  end
+
+  def seconds(s)
+    if r = s.match(/(\d+):(\d+):(\d)/)
+      return 3600 * r.captures[0].to_i + 60 * r.captures[1].to_i + r.captures[2].to_i
+    else
+      return 0
     end
   end
 end
@@ -367,7 +450,8 @@ begin
   when BBBOptions::CMD_HOURS
     b = BBBrute.new(options)
     b.auth
-    b.doors
+    data = b.doors
+    BBBrute::print_hours(data)
   when BBBOptions::CMD_LOCATE
     puts 'Placeholder command: ' + options.command.to_s
   when BBBOptions::CMD_FIRST
