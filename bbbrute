@@ -313,7 +313,7 @@ class BBBOptions
     @parsers[CMD_LAST] = OptionParser.new
     @parsers[CMD_LAST].banner = MSG_COMMAND_NAME % [CMD_LAST, MSG_DESCRIPTION_LAST]
 
-    @parsers[CMD_LAST].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |a|
+    @parsers[CMD_LAST].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |i|
       @options.command_args.id = i
     end
 
