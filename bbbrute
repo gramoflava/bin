@@ -207,142 +207,95 @@ class BBBOptions
     exit 0
   end
 
-  def define_parser_global
-    @parsers[CMD_GLOBAL] = OptionParser.new
-
-    @parsers[CMD_GLOBAL].banner = MSG_USAGE % File.basename($0)
-    @parsers[CMD_GLOBAL].separator MSG_DESCRIPTION
-    @parsers[CMD_GLOBAL].separator ''
-    @parsers[CMD_GLOBAL].separator 'OPTIONS'
-
-    @parsers[CMD_GLOBAL].on('-h', '--help', MSG_OPTION_HELP) do
-      exec_help_printout
-    end
-
-    @parsers[CMD_GLOBAL].on('-d', '--[no-]debug', MSG_OPTION_DEBUG) do |b|
-      @options.debug = b
-    end
-
-    @parsers[CMD_GLOBAL].on('-s', '--server HOSTNAME', String, MSG_OPTION_SERVER) do |s|
-      @options.server = s
-    end
-
-    @parsers[CMD_GLOBAL].on('-l', '--login LOGIN', String, MSG_OPTION_LOGIN) do |s|
-      @options.login = s
-    end
-
-    @parsers[CMD_GLOBAL].on('-p', '--password PASSWORD', String, MSG_OPTION_PASSWORD) do |s|
-      @options.password = s
-    end
-
-    @parsers[CMD_GLOBAL].on('-m', '--[no-]machine-friendly', MSG_OPTION_MACHINE) do |b|
-      @options.machine_friendly = b
-    end
-
-    @parsers[CMD_GLOBAL].separator ''
-  end
-
-  def define_parser_hours
-    @options.command_args       = OpenStruct.new
-    @options.command_args.id    = nil
-    @options.command_args.from  = nil
-    @options.command_args.until = nil
-
-    @parsers[CMD_HOURS] = OptionParser.new
-    @parsers[CMD_HOURS].banner = MSG_COMMAND_NAME % [CMD_HOURS, MSG_DESCRIPTION_HOURS]
-
-    @parsers[CMD_HOURS].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |i|
-      @options.command_args.id = i
-    end
-
-    @parsers[CMD_HOURS].on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM) do |s|
-      @options.command_args.from = Date.parse(s)
-    end
-
-    @parsers[CMD_HOURS].on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL) do |s|
-      @options.command_args.until = Date.parse(s)
-    end
-
-    @parsers[CMD_HOURS].separator ''
-  end
-
-  def define_parser_locate
-    @options.command_args       = OpenStruct.new
-    @options.command_args.id    = nil
-
-    @parsers[CMD_LOCATE] = OptionParser.new
-    @parsers[CMD_LOCATE].banner = MSG_COMMAND_NAME % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
-
-    @parsers[CMD_LOCATE].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |i|
-      @options.command_args.id = i
-    end
-
-    @parsers[CMD_LOCATE].separator ''
-  end
-
-  def define_parser_first
-    @options.command_args       = OpenStruct.new
-    @options.command_args.id    = nil
-    @options.command_args.from  = nil
-    @options.command_args.until = nil
-
-    @parsers[CMD_FIRST] = OptionParser.new
-    @parsers[CMD_FIRST].banner = MSG_COMMAND_NAME % [CMD_FIRST, MSG_DESCRIPTION_FIRST]
-
-    @parsers[CMD_FIRST].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |i|
-      @options.command_args.id = i
-    end
-
-    @parsers[CMD_FIRST].on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM) do |s|
-      @options.command_args.from = Date.parse(s)
-    end
-
-    @parsers[CMD_FIRST].on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL) do |s|
-      @options.command_args.until = Date.parse(s)
-    end
-
-    @parsers[CMD_FIRST].separator ''
-  end
-
-  def define_parser_last
-
-    @parsers[CMD_LAST] = OptionParser.new
-    @parsers[CMD_LAST].banner = MSG_COMMAND_NAME % [CMD_LAST, MSG_DESCRIPTION_LAST]
-
-    @parsers[CMD_LAST].on('-i', '--id ID', Integer, MSG_ARGUMENT_ID) do |i|
-      @options.command_args.id = i
-    end
-
-    @parsers[CMD_LAST].on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM) do |s|
-      @options.command_args.from = Date.parse(s)
-    end
-
-    @parsers[CMD_LAST].on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL) do |s|
-      @options.command_args.until = Date.parse(s)
-    end
-
-    @parsers[CMD_LAST].separator ''
-  end
-
-  def define_parser_save
-    @options.command_args       = nil
-
-    @parsers[CMD_SAVE] = OptionParser.new
-    @parsers[CMD_SAVE].banner = MSG_COMMAND_NAME % [CMD_SAVE, MSG_DESCRIPTION_SAVE]
-    @parsers[CMD_SAVE].separator ''
-  end
-
   def setup_parsers
-    @parsers = {}
+    @parsers = {
+      CMD_GLOBAL => OptionParser.new do |o|
+        o.banner = MSG_USAGE % File.basename($0)
+        o.separator MSG_DESCRIPTION
+        o.separator ''
+        o.separator 'OPTIONS'
 
-    define_parser_global
-    define_parser_hours
-    define_parser_locate
-    define_parser_first
-    define_parser_last
-    define_parser_save
-  rescue
-    BBBHelper.p_error 'Error in the options parser configuration.'
+        o.on('-h', '--help', MSG_OPTION_HELP)\
+          { exec_help_printout }
+
+        o.on('-d', '--[no-]debug', MSG_OPTION_DEBUG)\
+          {|b| @options.debug = b }
+
+        o.on('-s', '--server HOSTNAME', String, MSG_OPTION_SERVER)\
+          {|s| @options.server = s }
+
+        o.on('-l', '--login LOGIN', String, MSG_OPTION_LOGIN)\
+          {|s| @options.login = s }
+
+        o.on('-p', '--password PASSWORD', String, MSG_OPTION_PASSWORD)\
+          {|s| @options.password = s }
+
+        o.on('-m', '--[no-]machine-friendly', MSG_OPTION_MACHINE)\
+          {|b| @options.machine_friendly = b }
+
+        o.separator ''
+        o.separator 'COMMANDS'
+      end,
+
+      CMD_HOURS => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_NAME % [CMD_HOURS, MSG_DESCRIPTION_HOURS]
+
+        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
+          {|i| @options.command_args.id = i }
+
+        o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
+          {|s| @options.command_args.from = Date.parse(s) }
+
+        o.on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL)\
+          {|s| @options.command_args.until = Date.parse(s) }
+
+        o.separator ''
+      end,
+
+      CMD_LOCATE => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_NAME % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
+
+        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
+          {|i| @options.command_args.id = i }
+
+        o.separator ''
+      end,
+
+      CMD_FIRST => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_NAME % [CMD_FIRST, MSG_DESCRIPTION_FIRST]
+
+        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
+          {|i| @options.command_args.id = i }
+
+        o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
+          {|s| @options.command_args.from = Date.parse(s) }
+
+        o.on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL)\
+          {|s| @options.command_args.until = Date.parse(s) }
+
+        o.separator ''
+      end,
+
+      CMD_LAST => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_NAME % [CMD_LAST, MSG_DESCRIPTION_LAST]
+
+        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
+          {|i| @options.command_args.id = i }
+
+        o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
+          {|s| @options.command_args.from = Date.parse(s) }
+
+        o.on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL)\
+          {|s| @options.command_args.until = Date.parse(s) }
+
+        o.separator ''
+      end,
+
+      CMD_SAVE => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_NAME % [CMD_SAVE, MSG_DESCRIPTION_SAVE]
+        o.separator ''
+      end
+    }
   end
 
   def load_config
@@ -433,13 +386,10 @@ begin
     #b.doors
   when BBBOptions::CMD_LOCATE
     puts 'Placeholder command: ' + options.command.to_s
-    exit 0
   when BBBOptions::CMD_FIRST
     puts 'Placeholder command: ' + options.command.to_s
-    exit 0
   when BBBOptions::CMD_LAST
     puts 'Placeholder command: ' + options.command.to_s
-    exit 0
   when BBBOptions::CMD_SAVE
     options.save_config
   else
