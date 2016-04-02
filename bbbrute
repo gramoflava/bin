@@ -126,7 +126,7 @@ class BBBrute
   end
 
   def doors
-    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + query(STAT::TIMES, {:id => @options.id, :bdate => @options.from, :edate => @options.until}))
+    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + query(STAT::TIMES, {:id => @options.id, :bdate => @options.from, :edate => @options.to}))
 
     request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
     request.basic_auth(@options.login, @options.password)
@@ -163,23 +163,23 @@ class BBBOptions
   CMD_LAST        = 'last'
   CMD_SAVE        = 'save'
 
-  MSG_COMMAND_NAME            = '%s (%s)'
-  MSG_USAGE                   = 'Usage: %s [OPTION...] COMMAND COMMAND_ARG...'
+  MSG_USAGE                   = 'Usage: %s [OPTION...] COMMAND [ARG...]'
   MSG_DESCRIPTION             = 'BBBrute exists to help you with the analysis of timesheets'
-  MSG_DESCRIPTION_HOURS       = 'Get hours worked by person'
-  MSG_DESCRIPTION_LOCATE      = 'Find, where is person now, looking by the last entrie'
-  MSG_DESCRIPTION_FIRST       = 'List all first entries of the person by day'
-  MSG_DESCRIPTION_LAST        = 'List all last entries of the person by day'
+  MSG_COMMAND_PRINTOUT        = '%s (%s)'
+  MSG_DESCRIPTION_HOURS       = 'Print hours worked by person during a selected period'
+  MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
+  MSG_DESCRIPTION_FIRST       = 'List all first entries during a selected period'
+  MSG_DESCRIPTION_LAST        = 'List all last entries during a selected period'
   MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
   MSG_OPTION_HELP             = 'Show help message'
-  MSG_OPTION_DEBUG            = 'More info for debug purposes'
-  MSG_OPTION_SERVER           = 'Select target for BBBrute (example: https://example.org)'
-  MSG_OPTION_LOGIN            = 'Domain login of the user with access to the target server'
-  MSG_OPTION_PASSWORD         = 'Password of th user with access to the target server'
+  MSG_OPTION_DEBUG            = 'Print debug information'
+  MSG_OPTION_SERVER           = 'Address of the timesheets server (example: https://example.org)'
+  MSG_OPTION_LOGIN            = 'Domain login of the user with access to the timesheets server'
+  MSG_OPTION_PASSWORD         = 'Password of the user with access to the timesheets server'
   MSG_OPTION_MACHINE          = 'Output data as a JSON for further processing'
-  MSG_ARGUMENT_ID             = 'ID of the person to check'
-  MSG_ARGUMENT_FROM           = 'First day to request info, Default: today'
-  MSG_ARGUMENT_TILL           = 'Last day to request info, Default: FROM'
+  MSG_ARGUMENT_ID             = 'ID of the person to check timesheet for'
+  MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default value: today)'
+  MSG_ARGUMENT_TO             = 'End of the date range to check (default value: equals from)'
 
   def initialize
     @options = OpenStruct.new
@@ -238,7 +238,7 @@ class BBBOptions
       end,
 
       CMD_HOURS => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_NAME % [CMD_HOURS, MSG_DESCRIPTION_HOURS]
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_HOURS, MSG_DESCRIPTION_HOURS]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
           {|i| @options.command_args.id = i }
@@ -246,14 +246,14 @@ class BBBOptions
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @options.command_args.from = Date.parse(s) }
 
-        o.on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL)\
-          {|s| @options.command_args.until = Date.parse(s) }
+        o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
+          {|s| @options.command_args.to = Date.parse(s) }
 
         o.separator ''
       end,
 
       CMD_LOCATE => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_NAME % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
           {|i| @options.command_args.id = i }
@@ -262,7 +262,7 @@ class BBBOptions
       end,
 
       CMD_FIRST => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_NAME % [CMD_FIRST, MSG_DESCRIPTION_FIRST]
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_FIRST, MSG_DESCRIPTION_FIRST]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
           {|i| @options.command_args.id = i }
@@ -270,14 +270,14 @@ class BBBOptions
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @options.command_args.from = Date.parse(s) }
 
-        o.on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL)\
-          {|s| @options.command_args.until = Date.parse(s) }
+        o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
+          {|s| @options.command_args.to = Date.parse(s) }
 
         o.separator ''
       end,
 
       CMD_LAST => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_NAME % [CMD_LAST, MSG_DESCRIPTION_LAST]
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_LAST, MSG_DESCRIPTION_LAST]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
           {|i| @options.command_args.id = i }
@@ -285,14 +285,14 @@ class BBBOptions
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @options.command_args.from = Date.parse(s) }
 
-        o.on('-t', '--till DD.MM.YYYY', String, MSG_ARGUMENT_TILL)\
-          {|s| @options.command_args.until = Date.parse(s) }
+        o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
+          {|s| @options.command_args.to = Date.parse(s) }
 
         o.separator ''
       end,
 
       CMD_SAVE => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_NAME % [CMD_SAVE, MSG_DESCRIPTION_SAVE]
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_SAVE, MSG_DESCRIPTION_SAVE]
         o.separator ''
       end
     }
@@ -339,7 +339,7 @@ class BBBOptions
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
       @options.command_args.from  = nil
-      @options.command_args.until = nil
+      @options.command_args.to    = nil
     when CMD_LOCATE
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
@@ -347,18 +347,19 @@ class BBBOptions
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
       @options.command_args.from  = nil
-      @options.command_args.until = nil
+      @options.command_args.to    = nil
     when CMD_LAST
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
       @options.command_args.from  = nil
-      @options.command_args.until = nil
+      @options.command_args.to    = nil
     when CMD_SAVE
       @options.command_args = nil
     else
     end
 
     @parsers[command].parse(argv) if command
+
   rescue => e
     BBBHelper::p_error 'Unexpected error while processing arguments. Aborting…'
     raise e
