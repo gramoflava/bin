@@ -61,10 +61,8 @@ class BBBHelper
   end
 
   def self.p_error(lines)
-    if debug?
-      lines.split("\n").each do |line|
-        STDERR.puts "E,#{line}"
-      end
+    lines.split("\n").each do |line|
+      STDERR.puts "E,#{line}"
     end
   end
 end
@@ -384,6 +382,6 @@ begin
     exit 1
   end
 rescue => exception
-  STDERR.puts "E: #{exception}"
+  BBBHelper::p_error exception.to_s
   raise exception
 end
