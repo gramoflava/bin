@@ -22,7 +22,7 @@ class BBBHelper
 
     STDERR.puts 'GET Request:'
     STDERR.puts request.path
-    request.each_header {|key,value| STDERR.puts "| #{key} = #{value}" }
+    request.each_header {|key,value| STDERR.puts "| #{key} = #{value}"}
   end
 
   def self.debug_http_response_headers(response)
@@ -30,16 +30,14 @@ class BBBHelper
 
     STDERR.puts 'Response:'
     STDERR.puts response.inspect
-    response.header.each_header {|key,value| STDERR.puts "| #{key} = #{value}" }
+    response.header.each_header {|key,value| STDERR.puts "| #{key} = #{value}"}
   end
 
   def self.http_extract_cookies(response)
     all_cookies = response.get_fields('set-cookie')
     unless all_cookies == nil
       cookies_array = Array.new
-      all_cookies.each { |cookie|
-        cookies_array.push(cookie.split('; ')[0])
-      }
+      all_cookies.each {|cookie| cookies_array.push(cookie.split('; ')[0])}
       $cookies = cookies_array.join('; ')
     end
   rescue
@@ -219,19 +217,19 @@ class BBBOptions
           { exec_help_printout }
 
         o.on('-d', '--[no-]debug', MSG_OPTION_DEBUG)\
-          {|b| @options.debug = b }
+          {|b| @options.debug = b}
 
         o.on('-s', '--server HOSTNAME', String, MSG_OPTION_SERVER)\
-          {|s| @options.server = s }
+          {|s| @options.server = s}
 
         o.on('-l', '--login LOGIN', String, MSG_OPTION_LOGIN)\
-          {|s| @options.login = s }
+          {|s| @options.login = s}
 
         o.on('-p', '--password PASSWORD', String, MSG_OPTION_PASSWORD)\
-          {|s| @options.password = s }
+          {|s| @options.password = s}
 
         o.on('-m', '--[no-]machine-friendly', MSG_OPTION_MACHINE)\
-          {|b| @options.machine_friendly = b }
+          {|b| @options.machine_friendly = b}
 
         o.separator ''
         o.separator 'COMMANDS'
@@ -241,13 +239,13 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_HOURS, MSG_DESCRIPTION_HOURS]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @options.command_args.id = i }
+          {|i| @options.command_args.id = i}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
-          {|s| @options.command_args.from = Date.parse(s) }
+          {|s| @options.command_args.from = Date.parse(s)}
 
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
-          {|s| @options.command_args.to = Date.parse(s) }
+          {|s| @options.command_args.to = Date.parse(s)}
 
         o.separator ''
       end,
@@ -256,7 +254,7 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @options.command_args.id = i }
+          {|i| @options.command_args.id = i}
 
         o.separator ''
       end,
@@ -265,13 +263,13 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_FIRST, MSG_DESCRIPTION_FIRST]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @options.command_args.id = i }
+          {|i| @options.command_args.id = i}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
-          {|s| @options.command_args.from = Date.parse(s) }
+          {|s| @options.command_args.from = Date.parse(s)}
 
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
-          {|s| @options.command_args.to = Date.parse(s) }
+          {|s| @options.command_args.to = Date.parse(s)}
 
         o.separator ''
       end,
@@ -280,13 +278,13 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_LAST, MSG_DESCRIPTION_LAST]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @options.command_args.id = i }
+          {|i| @options.command_args.id = i}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
-          {|s| @options.command_args.from = Date.parse(s) }
+          {|s| @options.command_args.from = Date.parse(s)}
 
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
-          {|s| @options.command_args.to = Date.parse(s) }
+          {|s| @options.command_args.to = Date.parse(s)}
 
         o.separator ''
       end,
@@ -320,9 +318,7 @@ class BBBOptions
     }
 
     Dir.mkdir(File.dirname(CONFIG_FILE)) unless Dir.exist?(File.dirname(CONFIG_FILE))
-    File.open(CONFIG_FILE, mode = 'w') do |f|
-      f.puts(config.to_yaml)
-    end
+    File.open(CONFIG_FILE, mode = 'w') {|f| f.puts(config.to_yaml)}
 
     puts 'Configuration written to the file: ' + CONFIG_FILE
   rescue => e
