@@ -335,30 +335,20 @@ class BBBOptions
     @options.command = argv.shift
 
     case @options.command
-    when CMD_HOURS
+    when CMD_HOURS, CMD_FIRST, CMD_LAST
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
       @options.command_args.from  = nil
       @options.command_args.to    = nil
+      @parsers[@options.command].parse!(argv)
     when CMD_LOCATE
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
-    when CMD_FIRST
-      @options.command_args       = OpenStruct.new
-      @options.command_args.id    = nil
-      @options.command_args.from  = nil
-      @options.command_args.to    = nil
-    when CMD_LAST
-      @options.command_args       = OpenStruct.new
-      @options.command_args.id    = nil
-      @options.command_args.from  = nil
-      @options.command_args.to    = nil
+      @parsers[@options.command].parse!(argv)
     when CMD_SAVE
       @options.command_args = nil
-    else
+      @parsers[@options.command].parse!(argv)
     end
-
-    @parsers[command].parse(argv) if command
 
   rescue => e
     BBBHelper::p_error 'Unexpected error while processing arguments. Aborting…'
@@ -366,7 +356,7 @@ class BBBOptions
   end
 
   def get_options
-    @options.to_h
+    @options
   end
 end
 
