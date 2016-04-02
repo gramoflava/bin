@@ -305,10 +305,6 @@ class BBBOptions
   end
 
   def define_parser_last
-    @options.command_args       = OpenStruct.new
-    @options.command_args.id    = nil
-    @options.command_args.from  = nil
-    @options.command_args.until = nil
 
     @parsers[CMD_LAST] = OptionParser.new
     @parsers[CMD_LAST].banner = MSG_COMMAND_NAME % [CMD_LAST, MSG_DESCRIPTION_LAST]
@@ -384,6 +380,31 @@ class BBBOptions
   def parse(argv = ARGV)
     @parsers[CMD_GLOBAL].order!(argv)
     @options.command = argv.shift
+
+    case @options.command
+    when CMD_HOURS
+      @options.command_args       = OpenStruct.new
+      @options.command_args.id    = nil
+      @options.command_args.from  = nil
+      @options.command_args.until = nil
+    when CMD_LOCATE
+      @options.command_args       = OpenStruct.new
+      @options.command_args.id    = nil
+    when CMD_FIRST
+      @options.command_args       = OpenStruct.new
+      @options.command_args.id    = nil
+      @options.command_args.from  = nil
+      @options.command_args.until = nil
+    when CMD_LAST
+      @options.command_args       = OpenStruct.new
+      @options.command_args.id    = nil
+      @options.command_args.from  = nil
+      @options.command_args.until = nil
+    when CMD_SAVE
+      @options.command_args = nil
+    else
+    end
+
     @parsers[command].parse(argv) if command
   rescue => e
     BBBHelper::p_error 'Unexpected error while processing arguments. Aborting…'
