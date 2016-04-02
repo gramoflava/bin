@@ -419,22 +419,31 @@ end
 
 begin
   options = BBBOptions.new
-
   options.parse(ARGV)
 
   BBBHelper.debug = options.debug
   BBBHelper.p_debug 'Parsed options: ' + options.get_options.to_s
 
   case options.command
-  when 'doors'
-    b = BBBrute.new(options)
-    b.auth
-    b.doors
-
-  when 'save'
+  when BBBOptions::CMD_HOURS
+    puts 'Placeholder command: ' + options.command.to_s
+    exit 0
+    #b = BBBrute.new(options)
+    #b.auth
+    #b.doors
+  when BBBOptions::CMD_LOCATE
+    puts 'Placeholder command: ' + options.command.to_s
+    exit 0
+  when BBBOptions::CMD_FIRST
+    puts 'Placeholder command: ' + options.command.to_s
+    exit 0
+  when BBBOptions::CMD_LAST
+    puts 'Placeholder command: ' + options.command.to_s
+    exit 0
+  when BBBOptions::CMD_SAVE
     options.save_config
   else
-    BBBHelper.p_error 'Unrecognized command: ' + options.command.to_s
+    puts 'Unrecognized command: ' + options.command.to_s
     exit 1
   end
 rescue => exception
