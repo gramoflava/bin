@@ -332,6 +332,9 @@ class BBBOptions
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
           {|s| @options.command_args.to = Date.parse(s)}
 
+        o.on('-w', '--[no-]week', MSG_ARGUMENT_WEEK)\
+          {|b| @options.command_args.week = b}
+
         o.separator ''
       end,
 
@@ -439,7 +442,12 @@ class BBBOptions
       @options.command_args.id    = nil
       @options.command_args.from  = nil
       @options.command_args.to    = nil
+      @options.command_args.week  = false
       @parsers[@options.command].parse!(argv)
+      if @options.command_args.week
+        @options.command_args.from  = BBBrute.cwb
+        @options.command_args.to    = BBBrute.cwe
+      end
     when CMD_ETA
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
