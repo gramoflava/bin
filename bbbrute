@@ -114,11 +114,11 @@ class BBBrute
     $cookies = BBBHelper::http_extract_cookies(response)
   end
 
-  def cwb(date = Date.today)
+  def self.cwb(date = Date.today)
     date - date.wday + 1
   end
 
-  def cwe(date = Date.today)
+  def self.cwe(date = Date.today)
     date - date.wday + 7
   end
 
@@ -447,6 +447,10 @@ class BBBOptions
       @options.command_args.to    = nil
       @options.command_args.week  = false
       @parsers[@options.command].parse!(argv)
+      if @options.command_args.week
+        @options.command_args.from  = BBBrute.cwb
+        @options.command_args.to    = BBBrute.cwe
+      end
     when CMD_LOCATE
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
