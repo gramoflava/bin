@@ -326,9 +326,11 @@ class BBBOptions
   CMD_LAST        = 'last'
   CMD_SAVE        = 'save'
 
-  MSG_USAGE                   = 'Usage: %s [OPTION...] COMMAND [ARG...]'
+  MSG_USAGE                   = 'Usage: %s [OPTIONS...] COMMAND [ARGS...]'
   MSG_DESCRIPTION             = 'BBBrute exists to help you with the analysis of timesheets'
   MSG_COMMAND_PRINTOUT        = '%s (%s)'
+  MSG_SEPARATOR_OPTIONS       = 'OPTIONS'
+  MSG_SEPARATOR_COMMANDS      = 'COMMANDS'
   MSG_DESCRIPTION_HOURS       = 'Print hours worked by person during a selected period'
   MSG_DESCRIPTION_ETA         = 'Calculated remaining workload for a selected period'
   MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
@@ -378,7 +380,7 @@ class BBBOptions
         o.banner = MSG_USAGE % File.basename($0)
         o.separator MSG_DESCRIPTION
         o.separator ''
-        o.separator 'OPTIONS'
+        o.separator MSG_SEPARATOR_OPTIONS
 
         o.on('-h', '--help', MSG_OPTION_HELP)\
           { exec_help_printout }
@@ -399,7 +401,7 @@ class BBBOptions
           {|b| @options.machine_friendly = b}
 
         o.separator ''
-        o.separator 'COMMANDS'
+        o.separator MSG_SEPARATOR_COMMANDS
       end,
 
       CMD_HOURS => OptionParser.new do |o|
