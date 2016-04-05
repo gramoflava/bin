@@ -214,6 +214,53 @@ class BBBrute
     $cookies = BBBHelper::http_extract_cookies(response)
   end
 
+  def execute(command, params = {})
+    BBBHelper.p_debug 'Parsed command: ' + command.to_s
+
+    case command.instruction
+    when BBBOptions::CMD_HOURS
+      data = doors(command)
+      BBBHelper::formatted_printout(BBBOptions::CMD_HOURS, data)
+    when BBBOptions::CMD_ETA
+      data = doors(command, {fill_eta: true})
+      BBBHelper::formatted_printout(BBBOptions::CMD_ETA, data)
+    when BBBOptions::CMD_LOCATE
+      puts 'Placeholder command: ' + command.instruction.to_s
+    when BBBOptions::CMD_FIRST
+      puts 'Placeholder command: ' + command.instruction.to_s
+    when BBBOptions::CMD_LAST
+      puts 'Placeholder command: ' + command.instruction.to_s
+    when BBBOptions::CMD_QUERY
+      if params[:query_mode]
+        puts 'Unable to execute while in query mode.'
+      else
+        printf "Enter 'exit' to quit.\n> "
+        while input = gets
+          begin
+          input_argv = input.chomp.split(/\s/)
+          query_command = @options.parse_command(input_argv)
+          execute(query_command, {query_mode: true})
+          printf '> '
+          rescue => exception
+            BBBHelper::p_error exception.to_s
+          end
+        end
+      end
+    when BBBOptions::CMD_SAVE
+      @options.save_config
+    when BBBOptions::CMD_EXIT
+      if params[:query_mode]
+        exit 0
+      else
+        puts 'Unrecognized command: ' + command.instruction.to_s
+        exit 1
+      end
+    else
+      puts 'Unrecognized command: ' + command.instruction.to_s
+      exit 1 unless params[:query_mode]
+    end
+  end
+
   def doors(command, params = {})
     uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + query(STAT::TIMES, {
       :id => command.args.id,
@@ -336,7 +383,9 @@ class BBBOptions
   CMD_LOCATE      = 'locate'
   CMD_FIRST       = 'first'
   CMD_LAST        = 'last'
+  CMD_QUERY       = 'query'
   CMD_SAVE        = 'save'
+  CMD_EXIT        = 'exit'
 
   MSG_USAGE                   = 'Usage: %s [OPTIONS...] COMMAND [ARGS...]'
   MSG_DESCRIPTION             = 'BBBrute exists to help you with the analysis of timesheets'
@@ -348,6 +397,7 @@ class BBBOptions
   MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
   MSG_DESCRIPTION_FIRST       = 'List all first entries during a selected period'
   MSG_DESCRIPTION_LAST        = 'List all last entries during a selected period'
+  MSG_DESCRIPTION_QUERY       = 'Interactive mode. Usage: COMMAND [ARGS...]'
   MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
   MSG_OPTION_HELP             = 'Show help message'
   MSG_OPTION_DEBUG            = 'Print debug information'
@@ -489,6 +539,11 @@ class BBBOptions
         o.separator ''
       end,
 
+      CMD_QUERY => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_QUERY, MSG_DESCRIPTION_QUERY]
+        o.separator ''
+      end,
+
       CMD_SAVE => OptionParser.new do |o|
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_SAVE, MSG_DESCRIPTION_SAVE]
         o.separator ''
@@ -559,19 +614,17 @@ class BBBOptions
       @command.args       = OpenStruct.new
       @command.args.id    = nil
       @parsers[@command.instruction].parse!(argv)
-    when CMD_SAVE
+    when CMD_QUERY,CMD_SAVE,CMD_EXIT
       @command.args = nil
-      @parsers[@command.instruction].parse!(argv)
     end
 
-    @command
+    @command.clone
   end
 
   def get_options
     @options
   end
 end
-
 
 begin
   options = BBBOptions.new
@@ -584,25 +637,7 @@ begin
   BBBHelper.debug = options.debug
   BBBHelper.p_debug 'Parsed options: ' + options.get_options.to_s
 
-  case command.instruction
-  when BBBOptions::CMD_HOURS
-    data = b.doors(command)
-    BBBHelper::formatted_printout(BBBOptions::CMD_HOURS, data)
-  when BBBOptions::CMD_ETA
-    data = b.doors(command, {fill_eta: true})
-    BBBHelper::formatted_printout(BBBOptions::CMD_ETA, data)
-  when BBBOptions::CMD_LOCATE
-    puts 'Placeholder command: ' + options.command.to_s
-  when BBBOptions::CMD_FIRST
-    puts 'Placeholder command: ' + options.command.to_s
-  when BBBOptions::CMD_LAST
-    puts 'Placeholder command: ' + options.command.to_s
-  when BBBOptions::CMD_SAVE
-    options.save_config
-  else
-    puts 'Unrecognized command: ' + options.command.to_s
-    exit 1
-  end
+  b.execute(command)
 rescue => exception
   BBBHelper::p_error exception.to_s
   raise exception
