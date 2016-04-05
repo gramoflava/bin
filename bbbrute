@@ -11,6 +11,8 @@ require 'pp'
 
 
 class BBBHelper
+  SECONDS_IN_8H = 28800
+
   def self.debug?
     @debug ||= false
   end
@@ -73,6 +75,22 @@ class BBBHelper
   def self.cwe(date = Date.today)
     date - date.wday + 7
   end
+
+  def self.timestr_to_seconds(str)
+    timearr = str.split(':').map {|s| s.to_i}
+    timearr[0]*3600 + timearr[1]*60 + timearr[2]
+  end
+
+  def self.seconds_to_timestr(n)
+    n = n.abs
+
+    hours = n / 3600
+    r = n % 3600
+    minutes = r / 60
+    seconds = r % 60
+
+    sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+  end
 end
 
 
@@ -91,7 +109,6 @@ class BBBrute
   def initialize(options)
     @options = options
 
-    puts @options.server
     uri = URI(@options.server)
 
     @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE)
@@ -180,7 +197,7 @@ class BBBrute
 
           hours_data[:date]           = h[0][0].gsub(/[^0-9.]+/, '')
           hours_data[:hours]          = h[1][0].gsub(/[^0-9:]+/, '')
-          hours_data[:rate]           = h[2][0].to_f
+          hours_data[:rate]           = h[2][0].sub(',', '.').to_f
           hours_data[:day_off]        = h[3][0] != '&nbsp'
           hours_data[:vacation]       = h[4][0] != '&nbsp'
           hours_data[:unpaid_leave]   = h[5][0] != '&nbsp'
@@ -506,16 +523,35 @@ begin
 
     BBBrute::print_hours(data)
 
-    target_hours = data[:hours].map do |h|
+    hours = data[:hours].map do |h|
       if h[:holiday] or h[:day_off] or h[:vacation] or
         h[:unpaid_leave] or h[:sick_leave] or
         h[:business_trip] or h[:not_considered]
-        {date: h[:date], target: 0, hours: 0}
+        {date: h[:date], planned: 0, actual: 0}
       else
-        {date: h[:date], target: h[:rate] * 8.0, hours: h[:hours]}
+        planned_load = (h[:rate]*BBBHelper::SECONDS_IN_8H).round
+        actual = BBBHelper.timestr_to_seconds(h[:hours])
+
+        {
+          date: h[:date],
+          planned: planned_load,
+          actual: actual
+        }
       end
+    end.reduce do |h1, h2|
+      {planned: h1[:planned] + h2[:planned], actual: h1[:actual] + h2[:actual]}
     end
-    pp target_hours
+    hours[:eta] = hours[:planned] - hours[:actual]
+
+    puts
+    puts "Запланировано:  " + BBBHelper.seconds_to_timestr(hours[:planned])
+    puts "Отработано:     " + BBBHelper.seconds_to_timestr(hours[:actual])
+
+    if hours[:eta] < 0
+      puts "Переработано:   " + BBBHelper.seconds_to_timestr(hours[:eta])
+    else
+      puts "Недоработано:   " + BBBHelper.seconds_to_timestr(hours[:eta])
+    end
   when BBBOptions::CMD_LOCATE
     puts 'Placeholder command: ' + options.command.to_s
   when BBBOptions::CMD_FIRST
