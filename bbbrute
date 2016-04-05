@@ -108,8 +108,8 @@ class BBBHelper
                h[:unpaid_leave] ? 'U' : '',
                h[:sick_leave] ? 'S' : '',
                h[:business_trip] ? 'B' : '',
-               h[:not_considered] ? 'N' : '',
-               h[:comments])
+               h[:no_control] ? 'N' : '',
+               h[:comments].join('/'))
       end
     when BBBOptions::CMD_ETA
       printf("Запланировано: %11s\n", seconds_to_timestr(data[:eta][:planned]))
@@ -216,27 +216,29 @@ class BBBrute
           unpaid_leave:   nil,
           sick_leave:     nil,
           business_trip:  nil,
-          not_considered: nil,
-          comments:       ''
+          no_control:     nil,
+          comments:       []
         }
 
         if h = line.scan(/<TD.*?>(.*?)<\/TD>/)
-          if h[0][0].match(/Red/)
-            hours_data[:holiday] = true
-          end
-
+          hours_data[:holiday] = true if h[0][0].match(/Red/)
           hours_data[:date]           = h[0][0].gsub(/[^0-9.]+/, '')
           hours_data[:hours]          = h[1][0].gsub(/[^0-9:]+/, '')
           hours_data[:rate]           = h[2][0].sub(',', '.').to_f
-          hours_data[:day_off]        = h[3][0] != '&nbsp'
-          hours_data[:vacation]       = h[4][0] != '&nbsp'
-          hours_data[:unpaid_leave]   = h[5][0] != '&nbsp'
-          hours_data[:sick_leave]     = h[6][0] != '&nbsp'
-          hours_data[:business_trip]  = h[7][0] != '&nbsp'
-          hours_data[:not_considered] = h[8][0] != '&nbsp'
-
-          if hours_data[:not_considered] and c = h[8][0].match(/ALT = "(.*?)"/)
-            hours_data[:comments] = c.captures[0]
+          [
+            {index: 3, atom: :day_off},
+            {index: 4, atom: :vacation},
+            {index: 5, atom: :unpaid_leave},
+            {index: 6, atom: :sick_leave},
+            {index: 7, atom: :business_trip},
+            {index: 8, atom: :no_control}
+          ].each do |field|
+            if h[field[:index]][0] != '&nbsp'
+              hours_data[field[:atom]] = true
+              if c = h[field[:index]][0].match(/ALT = "(.*?)"/)
+                hours_data[:comments] << c.captures[0]
+              end
+            end
           end
         end
 
@@ -252,7 +254,7 @@ class BBBrute
     data[:eta] = data[:hours].map do |h|
       if h[:holiday] or h[:day_off] or h[:vacation] or
         h[:unpaid_leave] or h[:sick_leave] or
-        h[:business_trip] or h[:not_considered]
+        h[:business_trip] or h[:no_control]
         {date: h[:date], planned: 0, actual: 0}
       else
         planned_load = (h[:rate]*BBBHelper::SECONDS_IN_8H).round
