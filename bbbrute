@@ -17,6 +17,8 @@ class BBBHelper
   MSG_ETA_ACTUAL    = "Отработано:"
   MSG_ETA_OVERTIME  = "Переработано:"
   MSG_ETA_REMAINING = "Недоработано:"
+  MSG_ETA_FINISHED  = "Отработка была в:"
+  MSG_ETA_FINISH    = "Отработка в:"
 
   MSG_HOURS_HOLIDAY       = "Выходной"
   MSG_HOURS_DAY_OFF       = "Отгул"
@@ -146,13 +148,17 @@ class BBBHelper
       l = find_max_length([MSG_ETA_PLANNED,
                            MSG_ETA_ACTUAL,
                            MSG_ETA_OVERTIME,
-                           MSG_ETA_REMAINING])
+                           MSG_ETA_REMAINING,
+                           MSG_ETA_FINISHED,
+                           MSG_ETA_FINISH])
       printf("%-#{l}s %11s\n", MSG_ETA_PLANNED, seconds_to_timestr(data[:eta][:planned]))
       printf("%-#{l}s %11s\n", MSG_ETA_ACTUAL, seconds_to_timestr(data[:eta][:actual]))
       if data[:eta][:remaining] < 0
         printf("%-#{l}s %11s\n", MSG_ETA_OVERTIME, seconds_to_timestr(data[:eta][:remaining]))
+        printf("%-#{l}s %11s\n", MSG_ETA_FINISHED, seconds_to_timestr(data[:eta][:finish])) if data[:eta][:finish]
       else
         printf("%-#{l}s %11s\n", MSG_ETA_REMAINING, seconds_to_timestr(data[:eta][:remaining]))
+        printf("%-#{l}s %11s\n", MSG_ETA_FINISH, seconds_to_timestr(data[:eta][:finish])) if data[:eta][:finish]
       end
     end
   end
@@ -310,6 +316,9 @@ class BBBrute
     end
 
     data[:eta][:remaining] = data[:eta][:planned] - data[:eta][:actual]
+    if @options.command_args.to >= Date.today
+      data[:eta][:finish] = Time.now.to_i - Date.today.to_time.to_i + data[:eta][:remaining]
+    end
     data
   end
 end
@@ -343,9 +352,9 @@ class BBBOptions
   MSG_OPTION_LOGIN            = 'Domain login of the user with access to the timesheets server'
   MSG_OPTION_PASSWORD         = 'Password of the user with access to the timesheets server'
   MSG_OPTION_MACHINE          = 'Output data as a JSON for further processing'
-  MSG_ARGUMENT_ID             = 'ID of the person to check timesheet for'
-  MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default value: today)'
-  MSG_ARGUMENT_TO             = 'End of the date range to check (default value: equals from)'
+  MSG_ARGUMENT_ID             = 'ID of the person to check timesheet for (default: logged user)'
+  MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default: today)'
+  MSG_ARGUMENT_TO             = 'End of the date range to check (default: equals from)'
   MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
 
   def initialize
