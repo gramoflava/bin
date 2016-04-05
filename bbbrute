@@ -82,7 +82,6 @@ class BBBrute
 
   def initialize(options)
     @options = options
-    BBBHelper::p_debug "Initializing BBBrute with options: #{options}"
 
     uri = URI(@options.server)
 
