@@ -170,6 +170,8 @@ end
 
 
 class BBBrute
+  SESSION_FILE = File.join(Dir.home, '.bbbrute/cookies.b64')
+
   module STAT
     LATENESS  =  0
     ABSENCE   =  1
@@ -179,6 +181,7 @@ class BBBrute
 
   LOGIN_PAGE = 'misc/login.asp'
   DOORS_PAGE = 'Door/DoorPers.asp'
+  EMPL_PAGE  = 'List/NetEmpl.asp'
   USERAGENT  = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1'
 
   def initialize(options)
@@ -189,7 +192,7 @@ class BBBrute
     @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE)
   end
 
-  def query(stat, params)
+  def build_query(stat, params)
     id = params[:id]
     bdate = params[:bdate]
     edate = params[:edate]
@@ -201,17 +204,48 @@ class BBBrute
   end
 
   def auth
-    uri = URI.join(@options.server, LOGIN_PAGE)
+    load_session
+    if test_connection_response != '200'
+      BBBHelper::p_warning "Session expired. Logging in..."
+
+      uri = URI.join(@options.server, LOGIN_PAGE)
+      request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
+      request.basic_auth(@options.login, @options.password)
+      response = @http.request(request)
+
+      BBBHelper::debug_http_get_headers(request)
+      BBBHelper::debug_http_response_headers(response)
+
+      raise 'Authorization failed (401)' if response.code == '401'
+
+      $cookies = BBBHelper::http_extract_cookies(response)
+      save_session
+    end
+  end
+
+  def test_connection_response
+    uri = URI.join(@options.server + '/' + EMPL_PAGE)
+
     request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
     request.basic_auth(@options.login, @options.password)
+    request.add_field('cookie', $cookies)
     response = @http.request(request)
+    response.code
+  end
 
-    BBBHelper::debug_http_get_headers(request)
-    BBBHelper::debug_http_response_headers(response)
+  def load_session
+    f = File.read(SESSION_FILE)
+    $cookies = Base64.decode64(f)
+    BBBHelper.p_debug 'Session restored from the file: ' + SESSION_FILE
+  rescue
+    BBBHelper.p_debug 'Unable to restore session from the file: ' + SESSION_FILE
+  end
 
-    raise 'Authorization failed (401)' if response.code == '401'
-
-    $cookies = BBBHelper::http_extract_cookies(response)
+  def save_session
+    Dir.mkdir(File.dirname(SESSION_FILE)) unless Dir.exist?(File.dirname(SESSION_FILE))
+    File.open(SESSION_FILE, mode = 'w') {|f| f.puts(Base64.encode64($cookies))}
+  rescue
+    BBBHelper.p_warning "Unable to save session to the file(#{SESSION_FILE})"
   end
 
   def execute(command, params = {})
@@ -262,7 +296,7 @@ class BBBrute
   end
 
   def doors(command, params = {})
-    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + query(STAT::TIMES, {
+    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + build_query(STAT::TIMES, {
       :id => command.args.id,
       :bdate => command.args.from,
       :edate => command.args.to}))
@@ -418,7 +452,11 @@ class BBBOptions
     @options.password         = nil
     @options.machine_friendly = false
 
+    @session = OpenStruct.new
+    @session.config = nil
+
     load_config
+    load_session
     setup_parsers
   end
 
@@ -576,9 +614,9 @@ class BBBOptions
     File.open(CONFIG_FILE, mode = 'w') {|f| f.puts(config.to_yaml)}
 
     puts 'Configuration written to the file: ' + CONFIG_FILE
-  rescue => e
+  rescue => exception
     BBBHelper.p_error "Unable to write configuration to the file(#{CONFIG_FILE})"
-    raise e
+    raise exception
   end
 
   def parse(argv)
