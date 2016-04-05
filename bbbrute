@@ -437,7 +437,7 @@ class BBBOptions
     @options.command = argv.shift
 
     case @options.command
-    when CMD_HOURS, CMD_FIRST, CMD_LAST
+    when CMD_HOURS, CMD_ETA, CMD_FIRST, CMD_LAST
       @options.command_args       = OpenStruct.new
       @options.command_args.id    = nil
       @options.command_args.from  = nil
@@ -447,17 +447,9 @@ class BBBOptions
       if @options.command_args.week
         @options.command_args.from  = BBBrute.cwb
         @options.command_args.to    = BBBrute.cwe
-      end
-    when CMD_ETA
-      @options.command_args       = OpenStruct.new
-      @options.command_args.id    = nil
-      @options.command_args.from  = nil
-      @options.command_args.to    = nil
-      @options.command_args.week  = false
-      @parsers[@options.command].parse!(argv)
-      if @options.command_args.week
-        @options.command_args.from  = BBBrute.cwb
-        @options.command_args.to    = BBBrute.cwe
+      else
+        @options.command_args.from ||= Date.today
+        @options.command_args.to ||= @options.command_args.from
       end
     when CMD_LOCATE
       @options.command_args       = OpenStruct.new
