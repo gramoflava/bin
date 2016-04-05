@@ -13,6 +13,19 @@ require 'pp'
 class BBBHelper
   SECONDS_IN_8H = 28800
 
+  MSG_ETA_PLANNED   = "Запланировано:"
+  MSG_ETA_ACTUAL    = "Отработано:"
+  MSG_ETA_OVERTIME  = "Переработано:"
+  MSG_ETA_REMAINING = "Недоработано:"
+
+  MSG_HOURS_HOLIDAY       = "Выходной"
+  MSG_HOURS_DAY_OFF       = "Отгул"
+  MSG_HOURS_VACATION      = "Отпуск"
+  MSG_HOURS_UNPAID_LEAVE  = "ОЗС"
+  MSG_HOURS_SICK_LEAVE    = "Больничный"
+  MSG_HOURS_BUSINESS_TRIP = "Командировка"
+  MSG_HOURS_NO_CONTROL    = "Снят контроль"
+
   def self.debug?
     @debug ||= false
   end
@@ -92,34 +105,60 @@ class BBBHelper
     sprintf("%02d:%02d:%02d", hours, minutes, seconds)
   end
 
+  def self.out_of_office(params)
+    return MSG_HOURS_BUSINESS_TRIP if params[:business_trip]
+    return MSG_HOURS_HOLIDAY if params[:holiday]
+    return MSG_HOURS_SICK_LEAVE if params[:sick_leave]
+    return MSG_HOURS_UNPAID_LEAVE if params[:unpaid_leave]
+    return MSG_HOURS_DAY_OFF if params[:day_off]
+    return MSG_HOURS_VACATION if params[:vacation]
+    return MSG_HOURS_NO_CONTROL if params[:no_control]
+    return ""
+  end
+
   def self.formatted_printout(format, data)
-    puts "#{data[:name]} (#{data[:id]}):"
+    if data.nil?
+      puts 'No data found'
+      exit 0
+    end
+
+    puts "#{data[:name]} (#{data[:id]})"
 
     case format
     when BBBOptions::CMD_HOURS
+      l = find_max_length([MSG_HOURS_HOLIDAY,
+                           MSG_HOURS_DAY_OFF,
+                           MSG_HOURS_VACATION,
+                           MSG_HOURS_UNPAID_LEAVE,
+                           MSG_HOURS_SICK_LEAVE,
+                           MSG_HOURS_BUSINESS_TRIP,
+                           MSG_HOURS_NO_CONTROL])
+
       data[:hours].each do |h|
-        printf("%1s %10s  %8s  %4.2f  %1s %1s %1s %1s %1s %1s  %s\n",
-               h[:holiday] ? 'H' : '',
+        printf("%10s  %8s  %4.2f  %-#{l}s  %s\n",
                h[:date],
                h[:hours],
                h[:rate],
-               h[:day_off] ? 'D' : '',
-               h[:vacation] ? 'V' : '',
-               h[:unpaid_leave] ? 'U' : '',
-               h[:sick_leave] ? 'S' : '',
-               h[:business_trip] ? 'B' : '',
-               h[:no_control] ? 'N' : '',
+               out_of_office(h),
                h[:comments].join('/'))
       end
     when BBBOptions::CMD_ETA
-      printf("Запланировано: %11s\n", seconds_to_timestr(data[:eta][:planned]))
-      printf("Отработано:    %11s\n", seconds_to_timestr(data[:eta][:actual]))
+      l = find_max_length([MSG_ETA_PLANNED,
+                           MSG_ETA_ACTUAL,
+                           MSG_ETA_OVERTIME,
+                           MSG_ETA_REMAINING])
+      printf("%-#{l}s %11s\n", MSG_ETA_PLANNED, seconds_to_timestr(data[:eta][:planned]))
+      printf("%-#{l}s %11s\n", MSG_ETA_ACTUAL, seconds_to_timestr(data[:eta][:actual]))
       if data[:eta][:remaining] < 0
-        printf("Переработано:  %11s\n", seconds_to_timestr(data[:eta][:remaining]))
+        printf("%-#{l}s %11s\n", MSG_ETA_OVERTIME, seconds_to_timestr(data[:eta][:remaining]))
       else
-        printf("Недоработано:  %11s\n", seconds_to_timestr(data[:eta][:remaining]))
+        printf("%-#{l}s %11s\n", MSG_ETA_REMAINING, seconds_to_timestr(data[:eta][:remaining]))
       end
     end
+  end
+
+  def self.find_max_length(lines)
+    lines.map{|l| l.length}.max
   end
 end
 
