@@ -91,6 +91,36 @@ class BBBHelper
 
     sprintf("%02d:%02d:%02d", hours, minutes, seconds)
   end
+
+  def self.formatted_printout(format, data)
+    puts "#{data[:name]} (#{data[:id]}):"
+
+    case format
+    when BBBOptions::CMD_HOURS
+      data[:hours].each do |h|
+        printf("%1s %10s  %8s  %4.2f  %1s %1s %1s %1s %1s %1s  %s\n",
+               h[:holiday] ? 'H' : '',
+               h[:date],
+               h[:hours],
+               h[:rate],
+               h[:day_off] ? 'D' : '',
+               h[:vacation] ? 'V' : '',
+               h[:unpaid_leave] ? 'U' : '',
+               h[:sick_leave] ? 'S' : '',
+               h[:business_trip] ? 'B' : '',
+               h[:not_considered] ? 'N' : '',
+               h[:comments])
+      end
+    when BBBOptions::CMD_ETA
+      printf("Запланировано: %11s\n", seconds_to_timestr(data[:eta][:planned]))
+      printf("Отработано:    %11s\n", seconds_to_timestr(data[:eta][:actual]))
+      if data[:eta][:remaining] < 0
+        printf("Переработано:  %11s\n", seconds_to_timestr(data[:eta][:remaining]))
+      else
+        printf("Недоработано:  %11s\n", seconds_to_timestr(data[:eta][:remaining]))
+      end
+    end
+  end
 end
 
 
@@ -187,7 +217,7 @@ class BBBrute
           sick_leave:     nil,
           business_trip:  nil,
           not_considered: nil,
-          comment:        ''
+          comments:       ''
         }
 
         if h = line.scan(/<TD.*?>(.*?)<\/TD>/)
@@ -206,7 +236,7 @@ class BBBrute
           hours_data[:not_considered] = h[8][0] != '&nbsp'
 
           if hours_data[:not_considered] and c = h[8][0].match(/ALT = "(.*?)"/)
-            hours_data[:comment] = c.captures[0]
+            hours_data[:comments] = c.captures[0]
           end
         end
 
@@ -215,29 +245,6 @@ class BBBrute
     end
 
     parsed_data
-  end
-
-  def self.print_hours(data)
-    unless data
-      BBBHelper.p_error "No data found"
-      exit 0
-    end
-
-    puts "#{data[:name]} (#{data[:id]})"
-    data[:hours].each do |h|
-      printf("%1s %10s  %8s  %4.2f  %1s %1s %1s %1s %1s %1s  %s\n",
-             h[:holiday] ? 'H' : '',
-             h[:date],
-             h[:hours],
-             h[:rate],
-             h[:day_off] ? 'D' : '',
-             h[:vacation] ? 'V' : '',
-             h[:unpaid_leave] ? 'U' : '',
-             h[:sick_leave] ? 'S' : '',
-             h[:business_trip] ? 'B' : '',
-             h[:not_considered] ? 'N' : '',
-             h[:comment])
-    end
   end
 
   def seconds(s)
@@ -501,29 +508,13 @@ begin
     b = BBBrute.new(options)
     b.auth
     data = b.doors
-    BBBrute::print_hours(data)
+    BBBHelper::formatted_printout(BBBOptions::CMD_HOURS, data)
   when BBBOptions::CMD_ETA
     b = BBBrute.new(options)
     b.auth
     data = b.doors
 
-    #hours_data = {
-    #  holiday:        false,
-    #  date:           nil,
-    #  hours:          nil,
-    #  rate:           nil,
-    #  day_off:        nil,
-    #  vacation:       nil,
-    #  unpaid_leave:   nil,
-    #  sick_leave:     nil,
-    #  business_trip:  nil,
-    #  not_considered: nil,
-    #  comment:        ''
-    #}
-
-    BBBrute::print_hours(data)
-
-    hours = data[:hours].map do |h|
+    data[:eta] = data[:hours].map do |h|
       if h[:holiday] or h[:day_off] or h[:vacation] or
         h[:unpaid_leave] or h[:sick_leave] or
         h[:business_trip] or h[:not_considered]
@@ -541,17 +532,10 @@ begin
     end.reduce do |h1, h2|
       {planned: h1[:planned] + h2[:planned], actual: h1[:actual] + h2[:actual]}
     end
-    hours[:eta] = hours[:planned] - hours[:actual]
 
-    puts
-    puts "Запланировано:  " + BBBHelper.seconds_to_timestr(hours[:planned])
-    puts "Отработано:     " + BBBHelper.seconds_to_timestr(hours[:actual])
+    data[:eta][:remaining] = data[:eta][:planned] - data[:eta][:actual]
 
-    if hours[:eta] < 0
-      puts "Переработано:   " + BBBHelper.seconds_to_timestr(hours[:eta])
-    else
-      puts "Недоработано:   " + BBBHelper.seconds_to_timestr(hours[:eta])
-    end
+    BBBHelper::formatted_printout(BBBOptions::CMD_ETA, data)
   when BBBOptions::CMD_LOCATE
     puts 'Placeholder command: ' + options.command.to_s
   when BBBOptions::CMD_FIRST
