@@ -65,6 +65,14 @@ class BBBHelper
       STDERR.puts "E,#{line}"
     end
   end
+
+  def self.cwb(date = Date.today)
+    date - date.wday + 1
+  end
+
+  def self.cwe(date = Date.today)
+    date - date.wday + 7
+  end
 end
 
 
@@ -83,6 +91,7 @@ class BBBrute
   def initialize(options)
     @options = options
 
+    puts @options.server
     uri = URI(@options.server)
 
     @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE)
@@ -111,14 +120,6 @@ class BBBrute
     raise 'Authorization failed (401)' if response.code == '401'
 
     $cookies = BBBHelper::http_extract_cookies(response)
-  end
-
-  def self.cwb(date = Date.today)
-    date - date.wday + 1
-  end
-
-  def self.cwe(date = Date.today)
-    date - date.wday + 7
   end
 
   def doors
@@ -261,7 +262,7 @@ class BBBOptions
   MSG_ARGUMENT_ID             = 'ID of the person to check timesheet for'
   MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default value: today)'
   MSG_ARGUMENT_TO             = 'End of the date range to check (default value: equals from)'
-  MSG_ARGUMENT_WEEK           = 'Ignore FROM and TO arguments and calculate for a current week instead'
+  MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
 
   def initialize
     @options = OpenStruct.new
@@ -443,11 +444,12 @@ class BBBOptions
       @options.command_args.to    = nil
       @options.command_args.week  = false
       @parsers[@options.command].parse!(argv)
+      @options.command_args.from ||= Date.today
+
       if @options.command_args.week
-        @options.command_args.from  = BBBrute.cwb
-        @options.command_args.to    = BBBrute.cwe
+        @options.command_args.from  = BBBHelper.cwb(@options.command_args.from)
+        @options.command_args.to    = BBBHelper.cwe(@options.command_args.from)
       else
-        @options.command_args.from ||= Date.today
         @options.command_args.to ||= @options.command_args.from
       end
     when CMD_LOCATE
@@ -488,21 +490,22 @@ begin
     b.auth
     data = b.doors
 
-    hours_data = {
-      holiday:        false,
-      date:           nil,
-      hours:          nil,
-      rate:           nil,
-      day_off:        nil,
-      vacation:       nil,
-      unpaid_leave:   nil,
-      sick_leave:     nil,
-      business_trip:  nil,
-      not_considered: nil,
-      comment:        ''
-    }
+    #hours_data = {
+    #  holiday:        false,
+    #  date:           nil,
+    #  hours:          nil,
+    #  rate:           nil,
+    #  day_off:        nil,
+    #  vacation:       nil,
+    #  unpaid_leave:   nil,
+    #  sick_leave:     nil,
+    #  business_trip:  nil,
+    #  not_considered: nil,
+    #  comment:        ''
+    #}
 
-    pp data[:hours]
+    BBBrute::print_hours(data)
+
     target_hours = data[:hours].map do |h|
       if h[:holiday] or h[:day_off] or h[:vacation] or
         h[:unpaid_leave] or h[:sick_leave] or
