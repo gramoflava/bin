@@ -485,7 +485,35 @@ begin
     data = b.doors
     BBBrute::print_hours(data)
   when BBBOptions::CMD_ETA
-    puts 'Placeholder command: ' + options.command.to_s
+    b = BBBrute.new(options)
+    b.auth
+    data = b.doors
+
+    hours_data = {
+      holiday:        false,
+      date:           nil,
+      hours:          nil,
+      rate:           nil,
+      day_off:        nil,
+      vacation:       nil,
+      unpaid_leave:   nil,
+      sick_leave:     nil,
+      business_trip:  nil,
+      not_considered: nil,
+      comment:        ''
+    }
+
+    pp data[:hours]
+    target_hours = data[:hours].map do |h|
+      if h[:holiday] or h[:day_off] or h[:vacation] or
+        h[:unpaid_leave] or h[:sick_leave] or
+        h[:business_trip] or h[:not_considered]
+        {date: h[:date], target: 0, hours: 0}
+      else
+        {date: h[:date], target: h[:rate] * 8.0, hours: h[:hours]}
+      end
+    end
+    pp target_hours
   when BBBOptions::CMD_LOCATE
     puts 'Placeholder command: ' + options.command.to_s
   when BBBOptions::CMD_FIRST
