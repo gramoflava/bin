@@ -179,6 +179,22 @@ class BBBrute
     ENTRIES   =  3
   end
 
+  FLOOR_DATA = {
+    "123"                => {old:true, place: :filimonava},
+    "407"                => {old:true, place: :platonava},
+    "4-й этаж, лестница" => {floor: 4, gate: :stairs},
+    "4-й этаж, лифт"     => {floor: 4, gate: :elevator},
+    "5-й этаж, лестница" => {floor: 5, gate: :stairs},
+    "5-й этаж, лифт"     => {floor: 5, gate: :elevator},
+    "6-й этаж, лестница" => {floor: 6, gate: :stairs},
+    "6-й этаж, лифт"     => {floor: 6, gate: :elevator},
+    "7-й этаж, лестница" => {floor: 7, gate: :stairs},
+    "8-й этаж, лестница" => {floor: 8, gate: :stairs},
+    "9 этаж, спортзал"   => {floor: 9, gate: :roof},
+    "9-й этаж, лестница" => {floor: 9, gate: :stairs},
+    "9-й этаж, лифт"     => {floor: 9, gate: :elevator}
+  }
+
   LOGIN_PAGE = 'misc/login.asp'
   DOORS_PAGE = 'Door/DoorPers.asp'
   EMPL_PAGE  = 'List/NetEmpl.asp'
@@ -189,7 +205,7 @@ class BBBrute
 
     uri = URI(@options.server)
 
-    @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE, open_timeout: 3, read_timeout: 3)
+    @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE, open_timeout: 3, read_timeout: 120)
   end
 
   def build_query(stat, params)
@@ -421,7 +437,7 @@ class BBBrute
       rawdata = body_dissect.captures[3]
       BBBHelper.p_debug "Data = #{rawdata.length}B"
 
-      parsed_data[:hours] = rawdata.split('<tr>').map do |line|
+      parsed_data[:entries] = rawdata.split('<tr>').map do |line|
         entry = {
           datetime:   nil,
           door:       nil,
@@ -448,7 +464,7 @@ class BBBrute
           time = e[1][0].gsub(/[^0-9:]+/, '')
           entry[:datetime] = DateTime.parse("#date{} #{time}")
 
-          entry[:door] = e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join
+          entry[:door] = FLOOR_DATA[e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join]
 
           if e[3][0].include? "Вход"
             entry[:direction] = :in
