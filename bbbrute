@@ -184,6 +184,20 @@ class BBBHelper
                    MSG_GATE[entry[:door][:gate]])
         end
       end
+    when BBBOptions::CMD_FIRST
+      lg = find_max_length(MSG_GATE.values)
+      le = find_max_length(MSG_DIRECTION.values)
+      data[:entries].each do |date, entries|
+        e = entries.first
+        printf("%s  %s  %d  %-#{le}s  %-#{lg}s\n", date, e[:time], e[:door][:floor], MSG_DIRECTION[e[:direction]], MSG_GATE[e[:door][:gate]])
+      end
+    when BBBOptions::CMD_LAST
+      lg = find_max_length(MSG_GATE.values)
+      le = find_max_length(MSG_DIRECTION.values)
+      data[:entries].each do |date, entries|
+        e = entries.last
+        printf("%s  %s  %d  %-#{le}s  %-#{lg}s\n", date, e[:time], e[:door][:floor], MSG_DIRECTION[e[:direction]], MSG_GATE[e[:door][:gate]])
+      end
     end
   end
 
@@ -319,9 +333,11 @@ class BBBrute
     when BBBOptions::CMD_LOCATE
       puts 'Placeholder command: ' + command.instruction.to_s
     when BBBOptions::CMD_FIRST
-      puts 'Placeholder command: ' + command.instruction.to_s
+      data = entries(command)
+      BBBHelper::formatted_printout(BBBOptions::CMD_FIRST, data)
     when BBBOptions::CMD_LAST
-      puts 'Placeholder command: ' + command.instruction.to_s
+      data = entries(command)
+      BBBHelper::formatted_printout(BBBOptions::CMD_LAST, data)
     when BBBOptions::CMD_QUERY
       if params[:query_mode]
         puts 'Unable to execute while in query mode.'
