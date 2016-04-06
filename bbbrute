@@ -184,19 +184,13 @@ class BBBHelper
                    MSG_GATE[entry[:door][:gate]])
         end
       end
-    when BBBOptions::CMD_FIRST
+    when BBBOptions::CMD_PRESENCE
       lg = find_max_length(MSG_GATE.values)
       le = find_max_length(MSG_DIRECTION.values)
       data[:entries].each do |date, entries|
-        e = entries.first
-        printf("%s  %s  %d  %-#{le}s  %-#{lg}s\n", date, e[:time], e[:door][:floor], MSG_DIRECTION[e[:direction]], MSG_GATE[e[:door][:gate]])
-      end
-    when BBBOptions::CMD_LAST
-      lg = find_max_length(MSG_GATE.values)
-      le = find_max_length(MSG_DIRECTION.values)
-      data[:entries].each do |date, entries|
-        e = entries.last
-        printf("%s  %s  %d  %-#{le}s  %-#{lg}s\n", date, e[:time], e[:door][:floor], MSG_DIRECTION[e[:direction]], MSG_GATE[e[:door][:gate]])
+        ef = entries.first
+        el = entries.last
+        printf("%10s:  %8s - %8s\n", date, ef[:time], el[:time])
       end
     end
   end
@@ -332,12 +326,9 @@ class BBBrute
       BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
     when BBBOptions::CMD_LOCATE
       puts 'Placeholder command: ' + command.instruction.to_s
-    when BBBOptions::CMD_FIRST
+    when BBBOptions::CMD_PRESENCE
       data = entries(command)
-      BBBHelper::formatted_printout(BBBOptions::CMD_FIRST, data)
-    when BBBOptions::CMD_LAST
-      data = entries(command)
-      BBBHelper::formatted_printout(BBBOptions::CMD_LAST, data)
+      BBBHelper::formatted_printout(BBBOptions::CMD_PRESENCE, data)
     when BBBOptions::CMD_QUERY
       if params[:query_mode]
         puts 'Unable to execute while in query mode.'
@@ -561,8 +552,7 @@ class BBBOptions
   CMD_ETA         = 'eta'
   CMD_ENTRIES     = 'entries'
   CMD_LOCATE      = 'locate'
-  CMD_FIRST       = 'first'
-  CMD_LAST        = 'last'
+  CMD_PRESENCE    = 'presence'
   CMD_QUERY       = 'query'
   CMD_SAVE        = 'save'
   CMD_EXIT        = 'exit'
@@ -576,8 +566,7 @@ class BBBOptions
   MSG_DESCRIPTION_ETA         = 'Calculated remaining workload for a selected period'
   MSG_DESCRIPTION_ENTRIES     = 'Print all entries by person during a selected period'
   MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
-  MSG_DESCRIPTION_FIRST       = 'List all first entries during a selected period'
-  MSG_DESCRIPTION_LAST        = 'List all last entries during a selected period'
+  MSG_DESCRIPTION_PRESENCE    = 'List all first and last entries during a selected period'
   MSG_DESCRIPTION_QUERY       = 'Interactive mode. Usage: COMMAND [ARGS...]'
   MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
   MSG_OPTION_HELP             = 'Show help message'
@@ -712,23 +701,8 @@ class BBBOptions
         o.separator ''
       end,
 
-      CMD_FIRST => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_PRINTOUT % [CMD_FIRST, MSG_DESCRIPTION_FIRST]
-
-        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @command.args.id = i}
-
-        o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
-          {|s| @command.args.from = Date.parse(s)}
-
-        o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
-          {|s| @command.args.to = Date.parse(s)}
-
-        o.separator ''
-      end,
-
-      CMD_LAST => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_PRINTOUT % [CMD_LAST, MSG_DESCRIPTION_LAST]
+      CMD_PRESENCE => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_PRESENCE, MSG_DESCRIPTION_PRESENCE]
 
         o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
           {|i| @command.args.id = i}
@@ -797,7 +771,7 @@ class BBBOptions
     @command.args = OpenStruct.new
 
     case @command.instruction
-    when CMD_HOURS, CMD_ETA, CMD_ENTRIES, CMD_FIRST, CMD_LAST
+    when CMD_HOURS, CMD_ETA, CMD_ENTRIES, CMD_PRESENCE
       @command.args       = OpenStruct.new
       @command.args.id    = nil
       @command.args.from  = nil
