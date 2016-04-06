@@ -28,6 +28,17 @@ class BBBHelper
   MSG_HOURS_BUSINESS_TRIP = "Командировка"
   MSG_HOURS_NO_CONTROL    = "Снят контроль"
 
+  MSG_GATE = {
+    elevator: "Лифт",
+    stairs:   "Лестница",
+    roof:      "Крыша"
+  }
+
+  MSG_DIRECTION = {
+    in:  "Вход",
+    out: "Выход"
+  }
+
   def self.debug?
     @debug ||= false
   end
@@ -161,22 +172,18 @@ class BBBHelper
         printf("%-#{l}s %11s\n", MSG_ETA_FINISH, seconds_to_timestr(data[:eta][:finish])) if data[:eta][:finish]
       end
     when BBBOptions::CMD_ENTRIES
-      pp data
-      #l = find_max_length([MSG_HOURS_HOLIDAY,
-      #                     MSG_HOURS_DAY_OFF,
-      #                     MSG_HOURS_VACATION,
-      #                     MSG_HOURS_UNPAID_LEAVE,
-      #                     MSG_HOURS_SICK_LEAVE,
-      #                     MSG_HOURS_BUSINESS_TRIP,
-      #                     MSG_HOURS_NO_CONTROL])
-
-      #data[:entries].each do |h|
-      #  printf("%10s  %8s  %4.2f  %-#{l}s  %s\n",
-      #         h[:date],
-      #         h[:hours],
-      #         h[:rate],
-      #         out_of_office(h),
-      #         h[:comments].join('/'))
+      lg = find_max_length(MSG_GATE.values)
+      le = find_max_length(MSG_DIRECTION.values)
+      data[:entries].each do |date, entries|
+        puts date
+        entries.each do |entry|
+          printf("%s  %d  %-#{le}s  %-#{lg}s\n",
+                 entry[:time],
+                   entry[:door][:floor],
+                   MSG_DIRECTION[entry[:direction]],
+                   MSG_GATE[entry[:door][:gate]])
+        end
+      end
     end
   end
 
