@@ -175,8 +175,8 @@ class BBBrute
   module STAT
     LATENESS  =  0
     ABSENCE   =  1
-    TIMES     =  2
-    DOORS     =  3
+    HOURS     =  2
+    ENTRIES   =  3
   end
 
   LOGIN_PAGE = 'misc/login.asp'
@@ -296,7 +296,91 @@ class BBBrute
   end
 
   def doors(command, params = {})
-    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + build_query(STAT::TIMES, {
+    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + build_query(STAT::HOURS, {
+      :id => command.args.id,
+      :bdate => command.args.from,
+      :edate => command.args.to}))
+
+    request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
+    request.basic_auth(@options.login, @options.password)
+    request.add_field('cookie', $cookies)
+    response = @http.request(request)
+
+    BBBHelper::debug_http_get_headers(request)
+    BBBHelper::debug_http_response_headers(response)
+
+    BBBHelper::p_debug "#{command.args.id} #{response.inspect}"
+
+    body = response.body.force_encoding('CP1251').encode('UTF-8')
+
+    # BBBHelper::p_debug 'BODY'
+    # BBBHelper::p_debug body
+    # BBBHelper::p_debug 'END BODY'
+
+    parsed_data = nil
+
+    if body_dissect = body.match(/<TR><TD ALIGN=Right rowspan=(\d+)>1.<TD rowspan=\d+><a href=\.\.\/misc\/PersInfo\.asp\?ID=(\d+)>(.*?)<\/a><\/td>(.*)<\/tr><TR><TD ALIGN=Left bgcolor = Silver>/)
+
+      parsed_data= {}
+      parsed_data[:count] = body_dissect.captures[0].to_i - 1
+      BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
+
+      parsed_data[:id] = body_dissect.captures[1].to_i
+      BBBHelper.p_debug "Id   = " + parsed_data[:id].to_s
+
+      parsed_data[:name] = body_dissect.captures[2]
+      BBBHelper.p_debug "Name = " + parsed_data[:name]
+
+      rawdata = body_dissect.captures[3]
+      BBBHelper.p_debug "Data = #{rawdata.length}B"
+
+      parsed_data[:hours] = rawdata.split('<tr>').map do |line|
+        hours_data = {
+          holiday:        false,
+          date:           nil,
+          hours:          nil,
+          rate:           nil,
+          day_off:        nil,
+          vacation:       nil,
+          unpaid_leave:   nil,
+          sick_leave:     nil,
+          business_trip:  nil,
+          no_control:     nil,
+          comments:       []
+        }
+
+        if h = line.scan(/<TD.*?>(.*?)<\/TD>/)
+          hours_data[:holiday] = true if h[0][0].match(/Red/)
+          hours_data[:date]           = h[0][0].gsub(/[^0-9.]+/, '')
+          hours_data[:hours]          = h[1][0].gsub(/[^0-9:]+/, '')
+          hours_data[:rate]           = h[2][0].sub(',', '.').to_f
+          [
+            {index: 3, atom: :day_off},
+            {index: 4, atom: :vacation},
+            {index: 5, atom: :unpaid_leave},
+            {index: 6, atom: :sick_leave},
+            {index: 7, atom: :business_trip},
+            {index: 8, atom: :no_control}
+          ].each do |field|
+            if h[field[:index]][0] != '&nbsp'
+              hours_data[field[:atom]] = true
+              if c = h[field[:index]][0].match(/ALT = "(.*?)"/)
+                hours_data[:comments] << c.captures[0]
+              end
+            end
+          end
+        end
+
+        hours_data
+      end
+    end
+
+    parsed_data = fill_eta(command, parsed_data) if params[:fill_eta]
+    parsed_data
+  end
+
+  def entries(command, params = {})
+    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + build_query(STAT::ENTRIES, {
       :id => command.args.id,
       :bdate => command.args.from,
       :edate => command.args.to}))
