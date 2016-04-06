@@ -39,6 +39,12 @@ class BBBHelper
     out: "Выход"
   }
 
+  MSG_LOCATE_LOCATION = "Местонахождение"
+  MSG_LOCATE_ABSCENT  = "Не приходил"
+  MSG_LOCATE_FLOOR    = "этаж"
+  MSG_LOCATE_OUT      = "Покинул здание"
+  MSG_LOCATE_ROOF     = "На крыше"
+
   def self.debug?
     @debug ||= false
   end
@@ -184,13 +190,33 @@ class BBBHelper
                    MSG_GATE[entry[:door][:gate]])
         end
       end
+    when BBBOptions::CMD_LOCATE
+      if data[:entries].nil? or data[:entries].empty?
+        printf("%s: %s\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ABSCENT)
+      else
+        entry = data[:entries].first[1].last
+
+        if entry[:direction] == :out
+          printf("%s: %s\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT)
+        elsif entry[:direction] == :in
+          if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
+            printf("%s: %s\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF)
+          else
+            printf("%s: %d %s\n", MSG_LOCATE_LOCATION, entry[:door][:floor], MSG_LOCATE_FLOOR)
+          end
+        end
+      end
     when BBBOptions::CMD_PRESENCE
       lg = find_max_length(MSG_GATE.values)
       le = find_max_length(MSG_DIRECTION.values)
       data[:entries].each do |date, entries|
-        ef = entries.first
-        el = entries.last
-        printf("%10s:  %8s - %8s\n", date, ef[:time], el[:time])
+        first = entries.first[:time]
+        last = if Date.today == Date.parse(date) and entries.last[:direction] != :out
+                 ""
+               else
+                 entries.last[:time]
+               end
+        printf("%10s:  %8s - %8s\n", date, first, last)
       end
     end
   end
@@ -325,7 +351,8 @@ class BBBrute
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
     when BBBOptions::CMD_LOCATE
-      puts 'Placeholder command: ' + command.instruction.to_s
+      data = entries(command)
+      BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
     when BBBOptions::CMD_PRESENCE
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_PRESENCE, data)
@@ -790,6 +817,8 @@ class BBBOptions
     when CMD_LOCATE
       @command.args       = OpenStruct.new
       @command.args.id    = nil
+      @command.args.from  = Date.today
+      @command.args.to    = @command.args.from
       @parsers[@command.instruction].parse!(argv)
     when CMD_QUERY,CMD_SAVE,CMD_EXIT
       @command.args = nil
