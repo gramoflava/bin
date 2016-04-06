@@ -160,6 +160,23 @@ class BBBHelper
         printf("%-#{l}s %11s\n", MSG_ETA_REMAINING, seconds_to_timestr(data[:eta][:remaining]))
         printf("%-#{l}s %11s\n", MSG_ETA_FINISH, seconds_to_timestr(data[:eta][:finish])) if data[:eta][:finish]
       end
+    when BBBOptions::CMD_ENTRIES
+      pp data
+      #l = find_max_length([MSG_HOURS_HOLIDAY,
+      #                     MSG_HOURS_DAY_OFF,
+      #                     MSG_HOURS_VACATION,
+      #                     MSG_HOURS_UNPAID_LEAVE,
+      #                     MSG_HOURS_SICK_LEAVE,
+      #                     MSG_HOURS_BUSINESS_TRIP,
+      #                     MSG_HOURS_NO_CONTROL])
+
+      #data[:entries].each do |h|
+      #  printf("%10s  %8s  %4.2f  %-#{l}s  %s\n",
+      #         h[:date],
+      #         h[:hours],
+      #         h[:rate],
+      #         out_of_office(h),
+      #         h[:comments].join('/'))
     end
   end
 
@@ -193,6 +210,21 @@ class BBBrute
     "9 этаж, спортзал"   => {floor: 9, gate: :roof},
     "9-й этаж, лестница" => {floor: 9, gate: :stairs},
     "9-й этаж, лифт"     => {floor: 9, gate: :elevator}
+  }
+
+  MONTHS = {
+    'января'   => '01',
+    'февраля'  => '02',
+    'марта'    => '03',
+    'апреля'   => '04',
+    'мая'      => '05',
+    'июня'     => '06',
+    'июля'     => '07',
+    'августа'  => '08',
+    'сентября' => '08',
+    'октября'  => '10',
+    'ноября'   => '11',
+    'декабря'  => '12'
   }
 
   LOGIN_PAGE = 'misc/login.asp'
@@ -276,7 +308,7 @@ class BBBrute
       BBBHelper::formatted_printout(BBBOptions::CMD_ETA, data)
     when BBBOptions::CMD_ENTRIES
       data = entries(command)
-      pp data
+      BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
     when BBBOptions::CMD_LOCATE
       puts 'Placeholder command: ' + command.instruction.to_s
     when BBBOptions::CMD_FIRST
@@ -437,43 +469,32 @@ class BBBrute
       rawdata = body_dissect.captures[3]
       BBBHelper.p_debug "Data = #{rawdata.length}B"
 
-      parsed_data[:entries] = rawdata.split('<tr>').map do |line|
-        entry = {
-          datetime:   nil,
-          door:       nil,
-          direction:  nil
-        }
+      parsed_data[:entries] = {}
 
+      rawdata.split('<tr>').map do |line|
         if e = line.scan(/<TD.*?>(.*?)<\/TD>/)
-          date = e[0][0]
-          {
-            'января'   => '01',
-            'февраля'  => '02',
-            'марта'    => '03',
-            'апреля'   => '04',
-            'мая'      => '05',
-            'июня'     => '06',
-            'июля'     => '07',
-            'августа'  => '08',
-            'сентября' => '08',
-            'октября'  => '10',
-            'ноября'   => '11',
-            'декабря'  => '12'
-          }.each { |k, v| date.sub!(k, v) }
-          date.gsub!(/[^0-9.]+/, '')
-          time = e[1][0].gsub(/[^0-9:]+/, '')
-          entry[:datetime] = DateTime.parse("#date{} #{time}")
+          date_p = e[0][0].split(' ')
+          date_p[0] = '0' + date_p[0] if date_p[0].length == 1
+          date_p[1] = MONTHS[date_p[1]]
 
-          entry[:door] = FLOOR_DATA[e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join]
+          date = date_p.take(3).join('.')
+
+          parsed_data[:entries][date] = [] unless parsed_data[:entries][date]
+
+          pass = {
+            time:      e[1][0].gsub(/[^0-9:]+/, ''),
+            door:      FLOOR_DATA[e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join],
+            direction: nil
+          }
 
           if e[3][0].include? "Вход"
-            entry[:direction] = :in
+            pass[:direction] = :in
           elsif e[3][0].include? "Выход"
-            entry[:direction] = :out
+            pass[:direction] = :out
           end
-        end
 
-        entry
+          parsed_data[:entries][date] << pass
+        end
       end
     end
 
