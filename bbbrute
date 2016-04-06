@@ -258,6 +258,9 @@ class BBBrute
     when BBBOptions::CMD_ETA
       data = doors(command, {fill_eta: true})
       BBBHelper::formatted_printout(BBBOptions::CMD_ETA, data)
+    when BBBOptions::CMD_ENTRIES
+      data = entries(command)
+      pp data
     when BBBOptions::CMD_LOCATE
       puts 'Placeholder command: ' + command.instruction.to_s
     when BBBOptions::CMD_FIRST
@@ -403,10 +406,10 @@ class BBBrute
 
     parsed_data = nil
 
-    if body_dissect = body.match(/<TR><TD ALIGN=Right rowspan=(\d+)>1.<TD rowspan=\d+><a href=\.\.\/misc\/PersInfo\.asp\?ID=(\d+)>(.*?)<\/a><\/td>(.*)<\/tr><TR><TD ALIGN=Left bgcolor = Silver>/)
+    if body_dissect = body.match(/<TR><TD ALIGN=Right rowspan=(\d+)>1.<TD rowspan=\d+><a href=\.\.\/misc\/PersInfo\.asp\?ID=(\d+)>(.*?)<\/a><\/td>(.*)<\/tr><\/Table>/)
 
       parsed_data= {}
-      parsed_data[:count] = body_dissect.captures[0].to_i - 1
+      parsed_data[:count] = body_dissect.captures[0].to_i
       BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
 
       parsed_data[:id] = body_dissect.captures[1].to_i
@@ -419,47 +422,45 @@ class BBBrute
       BBBHelper.p_debug "Data = #{rawdata.length}B"
 
       parsed_data[:hours] = rawdata.split('<tr>').map do |line|
-        hours_data = {
-          holiday:        false,
-          date:           nil,
-          hours:          nil,
-          rate:           nil,
-          day_off:        nil,
-          vacation:       nil,
-          unpaid_leave:   nil,
-          sick_leave:     nil,
-          business_trip:  nil,
-          no_control:     nil,
-          comments:       []
+        entry = {
+          datetime:   nil,
+          door:       nil,
+          direction:  nil
         }
 
-        if h = line.scan(/<TD.*?>(.*?)<\/TD>/)
-          hours_data[:holiday] = true if h[0][0].match(/Red/)
-          hours_data[:date]           = h[0][0].gsub(/[^0-9.]+/, '')
-          hours_data[:hours]          = h[1][0].gsub(/[^0-9:]+/, '')
-          hours_data[:rate]           = h[2][0].sub(',', '.').to_f
-          [
-            {index: 3, atom: :day_off},
-            {index: 4, atom: :vacation},
-            {index: 5, atom: :unpaid_leave},
-            {index: 6, atom: :sick_leave},
-            {index: 7, atom: :business_trip},
-            {index: 8, atom: :no_control}
-          ].each do |field|
-            if h[field[:index]][0] != '&nbsp'
-              hours_data[field[:atom]] = true
-              if c = h[field[:index]][0].match(/ALT = "(.*?)"/)
-                hours_data[:comments] << c.captures[0]
-              end
-            end
+        if e = line.scan(/<TD.*?>(.*?)<\/TD>/)
+          date = e[0][0]
+          {
+            'января'   => '01',
+            'февраля'  => '02',
+            'марта'    => '03',
+            'апреля'   => '04',
+            'мая'      => '05',
+            'июня'     => '06',
+            'июля'     => '07',
+            'августа'  => '08',
+            'сентября' => '08',
+            'октября'  => '10',
+            'ноября'   => '11',
+            'декабря'  => '12'
+          }.each { |k, v| date.sub!(k, v) }
+          date.gsub!(/[^0-9.]+/, '')
+          time = e[1][0].gsub(/[^0-9:]+/, '')
+          entry[:datetime] = DateTime.parse("#date{} #{time}")
+
+          entry[:door] = e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join
+
+          if e[3][0].include? "Вход"
+            entry[:direction] = :in
+          elsif e[3][0].include? "Выход"
+            entry[:direction] = :out
           end
         end
 
-        hours_data
+        entry
       end
     end
 
-    parsed_data = fill_eta(command, parsed_data) if params[:fill_eta]
     parsed_data
   end
 
@@ -498,6 +499,7 @@ class BBBOptions
   CMD_GLOBAL      = ''
   CMD_HOURS       = 'hours'
   CMD_ETA         = 'eta'
+  CMD_ENTRIES     = 'entries'
   CMD_LOCATE      = 'locate'
   CMD_FIRST       = 'first'
   CMD_LAST        = 'last'
@@ -512,6 +514,7 @@ class BBBOptions
   MSG_SEPARATOR_COMMANDS      = 'COMMANDS'
   MSG_DESCRIPTION_HOURS       = 'Print hours worked by person during a selected period'
   MSG_DESCRIPTION_ETA         = 'Calculated remaining workload for a selected period'
+  MSG_DESCRIPTION_ENTRIES     = 'Print all entries by person during a selected period'
   MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
   MSG_DESCRIPTION_FIRST       = 'List all first entries during a selected period'
   MSG_DESCRIPTION_LAST        = 'List all last entries during a selected period'
@@ -622,6 +625,24 @@ class BBBOptions
         o.separator ''
       end,
 
+      CMD_ENTRIES => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_ENTRIES, MSG_DESCRIPTION_ENTRIES]
+
+        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
+          {|i| @command.args.id = i}
+
+        o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
+          {|s| @command.args.from = Date.parse(s)}
+
+        o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
+          {|s| @command.args.to = Date.parse(s)}
+
+        o.on('-w', '--[no-]week', MSG_ARGUMENT_WEEK)\
+          {|b| @command.args.week = b}
+
+        o.separator ''
+      end,
+
       CMD_LOCATE => OptionParser.new do |o|
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
 
@@ -716,7 +737,7 @@ class BBBOptions
     @command.args = OpenStruct.new
 
     case @command.instruction
-    when CMD_HOURS, CMD_ETA, CMD_FIRST, CMD_LAST
+    when CMD_HOURS, CMD_ETA, CMD_ENTRIES, CMD_FIRST, CMD_LAST
       @command.args       = OpenStruct.new
       @command.args.id    = nil
       @command.args.from  = nil
