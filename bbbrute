@@ -141,10 +141,10 @@ class BBBHelper
       exit 0
     end
 
-    puts "#{data[:name]} (#{data[:id]})"
-
     case format
     when BBBOptions::CMD_HOURS
+      puts "#{data[:name]} (#{data[:id]})"
+
       l = find_max_length([MSG_HOURS_HOLIDAY,
                            MSG_HOURS_DAY_OFF,
                            MSG_HOURS_VACATION,
@@ -162,6 +162,8 @@ class BBBHelper
                h[:comments].join('/'))
       end
     when BBBOptions::CMD_ETA
+      puts "#{data[:name]} (#{data[:id]})"
+
       l = find_max_length([MSG_ETA_PLANNED,
                            MSG_ETA_ACTUAL,
                            MSG_ETA_OVERTIME,
@@ -178,6 +180,8 @@ class BBBHelper
         printf("%-#{l}s %11s\n", MSG_ETA_FINISH, seconds_to_timestr(data[:eta][:finish])) if data[:eta][:finish]
       end
     when BBBOptions::CMD_ENTRIES
+      puts "#{data[:name]} (#{data[:id]})"
+
       if data[:pairs]
         lg = find_max_length(MSG_GATE.values)
         data[:pairs].each do |date, pairs|
@@ -207,6 +211,8 @@ class BBBHelper
         end
       end
     when BBBOptions::CMD_LOCATE
+      puts "#{data[:name]} (#{data[:id]})"
+
       if data[:entries].nil? or data[:entries].empty?
         printf("%s: %s\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ABSCENT)
       else
@@ -223,6 +229,8 @@ class BBBHelper
         end
       end
     when BBBOptions::CMD_PRESENCE
+      puts "#{data[:name]} (#{data[:id]})"
+
       lg = find_max_length(MSG_GATE.values)
       le = find_max_length(MSG_DIRECTION.values)
       data[:entries].each do |date, entries|
@@ -233,6 +241,12 @@ class BBBHelper
                  entries.last[:time]
                end
         printf("%10s:  %8s - %8s\n", date, first, last)
+      end
+    when BBBOptions::CMD_ALIAS
+      lk = find_max_length(data.keys)
+      lv = find_max_length(data.values.map{|i| i.to_s})
+      data.each do |al, id|
+        printf("%-#{lk}s:  %#{lv}s\n", al, id)
       end
     end
   end
@@ -372,6 +386,17 @@ class BBBrute
     when BBBOptions::CMD_PRESENCE
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_PRESENCE, data)
+    when BBBOptions::CMD_ALIAS
+      if command.args.list
+        cache = @options.load_cache
+        if cache and cache[:aliases]
+          BBBHelper::formatted_printout(BBBOptions::CMD_ALIAS, cache[:aliases])
+        end
+      else
+        @options.to_cache({aliases: {op: :add, alias: command.args.alias, id: command.args.id}})
+      end
+    when BBBOptions::CMD_SAVE
+      @options.save_config
     when BBBOptions::CMD_QUERY
       if params[:query_mode]
         puts 'Unable to execute while in query mode.'
@@ -388,8 +413,6 @@ class BBBrute
           end
         end
       end
-    when BBBOptions::CMD_SAVE
-      @options.save_config
     when BBBOptions::CMD_EXIT
       if params[:query_mode]
         exit 0
@@ -639,6 +662,7 @@ end
 
 class BBBOptions
   CONFIG_FILE = File.join(Dir.home, '.bbbrute/config.yml')
+  CACHE_FILE  = File.join(Dir.home, '.bbbrute/cache.yml')
 
   CMD_GLOBAL      = ''
   CMD_HOURS       = 'hours'
@@ -646,8 +670,9 @@ class BBBOptions
   CMD_ENTRIES     = 'entries'
   CMD_LOCATE      = 'locate'
   CMD_PRESENCE    = 'presence'
-  CMD_QUERY       = 'query'
+  CMD_ALIAS       = 'alias'
   CMD_SAVE        = 'save'
+  CMD_QUERY       = 'query'
   CMD_EXIT        = 'exit'
 
   MSG_USAGE                   = 'Usage: %s [OPTIONS...] COMMAND [ARGS...]'
@@ -660,19 +685,23 @@ class BBBOptions
   MSG_DESCRIPTION_ENTRIES     = 'Print all entries by person during a selected period'
   MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
   MSG_DESCRIPTION_PRESENCE    = 'List all first and last entries during a selected period'
-  MSG_DESCRIPTION_QUERY       = 'Interactive mode. Usage: COMMAND [ARGS...]'
+  MSG_DESCRIPTION_ALIAS       = 'Manage aliases'
   MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
+  MSG_DESCRIPTION_QUERY       = 'Interactive mode. Usage: COMMAND [ARGS...]'
   MSG_OPTION_HELP             = 'Show help message'
   MSG_OPTION_DEBUG            = 'Print debug information'
   MSG_OPTION_SERVER           = 'Address of the timesheets server (example: https://example.org)'
   MSG_OPTION_LOGIN            = 'Domain login of the user with access to the timesheets server'
   MSG_OPTION_PASSWORD         = 'Password of the user with access to the timesheets server'
   MSG_OPTION_MACHINE          = 'Output data as a JSON for further processing'
-  MSG_ARGUMENT_ID             = 'ID of the person to check timesheet for (default: logged user)'
+  MSG_ARGUMENT_ID             = 'ID or alias of the person to check timesheet for (default: logged user)'
   MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default: today)'
   MSG_ARGUMENT_TO             = 'End of the date range to check (default: equals from)'
   MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
   MSG_ARGUMENT_PAIRS          = 'Paired printout of linked ins and outs'
+  MSG_ARGUMENT_ALIAS_ID       = 'ID to create alias for'
+  MSG_ARGUMENT_ALIAS_NAME     = 'Desired alias name'
+  MSG_ARGUMENT_ALIAS_LIST     = 'List existing aliases'
 
   def initialize
     @options = OpenStruct.new
@@ -735,8 +764,8 @@ class BBBOptions
       CMD_HOURS => OptionParser.new do |o|
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_HOURS, MSG_DESCRIPTION_HOURS]
 
-        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @command.args.id = i}
+        o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
+          {|s| @command.args.id = find_id(s)}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @command.args.from = Date.parse(s)}
@@ -753,8 +782,8 @@ class BBBOptions
       CMD_ETA => OptionParser.new do |o|
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_ETA, MSG_DESCRIPTION_ETA]
 
-        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @command.args.id = i}
+        o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
+          {|s| @command.args.id = find_id(s)}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @command.args.from = Date.parse(s)}
@@ -771,8 +800,8 @@ class BBBOptions
       CMD_ENTRIES => OptionParser.new do |o|
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_ENTRIES, MSG_DESCRIPTION_ENTRIES]
 
-        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @command.args.id = i}
+        o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
+          {|s| @command.args.id = find_id(s)}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @command.args.from = Date.parse(s)}
@@ -792,8 +821,8 @@ class BBBOptions
       CMD_LOCATE => OptionParser.new do |o|
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
 
-        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @command.args.id = i}
+        o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
+          {|s| @command.args.id = find_id(s)}
 
         o.separator ''
       end,
@@ -801,8 +830,8 @@ class BBBOptions
       CMD_PRESENCE => OptionParser.new do |o|
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_PRESENCE, MSG_DESCRIPTION_PRESENCE]
 
-        o.on('-i', '--id ID', Integer, MSG_ARGUMENT_ID)\
-          {|i| @command.args.id = i}
+        o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
+          {|s| @command.args.id = find_id(s)}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @command.args.from = Date.parse(s)}
@@ -813,13 +842,28 @@ class BBBOptions
         o.separator ''
       end,
 
-      CMD_QUERY => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_PRINTOUT % [CMD_QUERY, MSG_DESCRIPTION_QUERY]
+      CMD_ALIAS => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_ALIAS, MSG_DESCRIPTION_ALIAS]
+
+        o.on('-i', '--id ID', String, MSG_ARGUMENT_ALIAS_ID)\
+          {|s| @command.args.id = find_id(s)}
+
+        o.on('-a', '--alias ALIAS', String, MSG_ARGUMENT_ALIAS_NAME)\
+          {|s| @command.args.alias = s}
+
+        o.on('-l', '--[no-]list', MSG_ARGUMENT_ALIAS_LIST)\
+          {|b| @command.args.list = b}
+
         o.separator ''
       end,
 
       CMD_SAVE => OptionParser.new do |o|
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_SAVE, MSG_DESCRIPTION_SAVE]
+        o.separator ''
+      end,
+
+      CMD_QUERY => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_QUERY, MSG_DESCRIPTION_QUERY]
         o.separator ''
       end
     }
@@ -852,6 +896,38 @@ class BBBOptions
     puts 'Configuration written to the file: ' + CONFIG_FILE
   rescue => exception
     BBBHelper.p_error "Unable to write configuration to the file(#{CONFIG_FILE})"
+    raise exception
+  end
+
+  def find_id(input)
+    Integer(input)
+  rescue
+    load_cache[:aliases][input]
+  end
+
+  def load_cache(root = nil)
+    File.open(CACHE_FILE) {|f| YAML::load(f)}
+  rescue
+    BBBHelper.p_warning 'Unable to load cache from the file: ' + CACHE_FILE
+    {}
+  end
+
+  def to_cache(params)
+    cache = load_cache
+
+    if params[:aliases]
+      cache[:aliases] = {} unless cache[:aliases]
+
+      case params[:aliases][:op]
+      when :add
+        cache[:aliases][params[:aliases][:alias]] = params[:aliases][:id]
+      end
+    end
+
+    Dir.mkdir(File.dirname(CACHE_FILE)) unless Dir.exist?(File.dirname(CACHE_FILE))
+    File.open(CACHE_FILE, mode = 'w') {|f| f.puts(cache.to_yaml)}
+  rescue => exception
+    BBBHelper.p_error "Unable to write cache to the file(#{CACHE_FILE})"
     raise exception
   end
 
@@ -907,7 +983,12 @@ class BBBOptions
       @command.args.from  = Date.today
       @command.args.to    = @command.args.from
       @parsers[@command.instruction].parse!(argv)
-    when CMD_QUERY,CMD_SAVE,CMD_EXIT
+    when CMD_ALIAS
+      @command.args       = OpenStruct.new
+      @command.args.id    = nil
+      @command.args.alias = nil
+      @parsers[@command.instruction].parse!(argv)
+    when CMD_SAVE,CMD_QUERY,CMD_EXIT
       @command.args = nil
     end
 
