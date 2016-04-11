@@ -589,7 +589,7 @@ class BBBrute
       end
     end
 
-    if command.args.pairs
+    unless command.args.flat
       parsed_data[:pairs] = {}
       parsed_data[:entries].each do |date,entries|
         parsed_data[:pairs][date] = []
@@ -712,7 +712,7 @@ class BBBOptions
   MSG_ARGUMENT_TO             = 'End of the date range to check (default: equals from)'
   MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
   MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number'
-  MSG_ARGUMENT_PAIRS          = 'Paired printout of linked ins and outs'
+  MSG_ARGUMENT_FLAT           = 'Do not use paired printout of linked ins and outs'
   MSG_ARGUMENT_ALIAS_ID       = 'ID to create alias for'
   MSG_ARGUMENT_ALIAS_NAME     = 'Desired alias name'
   MSG_ARGUMENT_ALIAS_LIST     = 'List existing aliases'
@@ -826,8 +826,8 @@ class BBBOptions
         o.on('-w', '--[no-]week', MSG_ARGUMENT_WEEK)\
           {|b| @command.args.week = b}
 
-        o.on('-p', '--[no-]pairs', MSG_ARGUMENT_PAIRS)\
-          {|b| @command.args.pairs = b}
+        o.on('-f', '--[no-]flat', MSG_ARGUMENT_FLAT)\
+          {|b| @command.args.flat = b}
 
         o.separator ''
       end,
@@ -992,7 +992,7 @@ class BBBOptions
       @command.args.from  = nil
       @command.args.to    = nil
       @command.args.week  = false
-      @command.args.pairs = false
+      @command.args.flat  = false
 
       @parsers[@command.instruction].parse!(argv)
       @command.args.from ||= Date.today
