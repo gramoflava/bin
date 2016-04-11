@@ -20,6 +20,8 @@ class BBBHelper
   MSG_ETA_FINISHED  = "Отработка была в:"
   MSG_ETA_FINISH    = "Отработка в:"
 
+  MSG_DATA_NO_DATA = "Нет данных"
+
   MSG_HOURS_HOLIDAY       = "Выходной"
   MSG_HOURS_DAY_OFF       = "Отгул"
   MSG_HOURS_VACATION      = "Отпуск"
@@ -27,6 +29,7 @@ class BBBHelper
   MSG_HOURS_SICK_LEAVE    = "Больничный"
   MSG_HOURS_BUSINESS_TRIP = "Командировка"
   MSG_HOURS_NO_CONTROL    = "Снят контроль"
+
 
   MSG_GATE = {
     elevator: "Лифт",
@@ -137,7 +140,7 @@ class BBBHelper
 
   def self.formatted_printout(format, data)
     if data.nil?
-      puts 'No data found'
+      puts MSG_DATA_NO_DATA
       exit 0
     end
 
