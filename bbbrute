@@ -20,6 +20,8 @@ class BBBHelper
   MSG_ETA_FINISHED  = "Отработка была в:"
   MSG_ETA_FINISH    = "Отработка в:"
 
+  MSG_DATA_NO_DATA = "Нет данных"
+
   MSG_HOURS_HOLIDAY       = "Выходной"
   MSG_HOURS_DAY_OFF       = "Отгул"
   MSG_HOURS_VACATION      = "Отпуск"
@@ -27,6 +29,7 @@ class BBBHelper
   MSG_HOURS_SICK_LEAVE    = "Больничный"
   MSG_HOURS_BUSINESS_TRIP = "Командировка"
   MSG_HOURS_NO_CONTROL    = "Снят контроль"
+
 
   MSG_GATE = {
     elevator: "Лифт",
@@ -137,7 +140,7 @@ class BBBHelper
 
   def self.formatted_printout(format, data)
     if data.nil?
-      puts 'No data found'
+      puts MSG_DATA_NO_DATA
       exit 0
     end
 
@@ -228,20 +231,6 @@ class BBBHelper
           end
         end
       end
-    when BBBOptions::CMD_PRESENCE
-      puts "#{data[:name]} (#{data[:id]})"
-
-      lg = find_max_length(MSG_GATE.values)
-      le = find_max_length(MSG_DIRECTION.values)
-      data[:entries].each do |date, entries|
-        first = entries.first[:time]
-        last = if Date.today == Date.parse(date) and entries.last[:direction] != :out
-                 ""
-               else
-                 entries.last[:time]
-               end
-        printf("%10s:  %8s - %8s\n", date, first, last)
-      end
     when BBBOptions::CMD_ALIAS
       lk = find_max_length(data.keys)
       lv = find_max_length(data.values.map{|i| i.to_s})
@@ -259,6 +248,7 @@ end
 
 class BBBrute
   SESSION_FILE = File.join(Dir.home, '.bbbrute/cookies.b64')
+  WAITFOR_TIMEOUT = 2
 
   module STAT
     LATENESS  =  0
@@ -383,6 +373,27 @@ class BBBrute
     when BBBOptions::CMD_LOCATE
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
+    when BBBOptions::CMD_WAITFOR
+      date = Date.today.strftime('%d.%m.%Y')
+      loop do
+        data = entries(command)
+        if data and data[:entries] and data[:entries][date].last
+          case command.args.where
+          when 'in', 'out'
+            if data[:entries][date].last[:direction].to_s == command.args.where
+              puts 'inout'
+              exit 0
+            end
+          else
+            if data[:entries][date].last[:direction] == :in and data[:entries][date].last[:door][:floor].to_s == command.args.where
+              puts '8'
+              exit 0
+            end
+          end
+        end
+
+        sleep WAITFOR_TIMEOUT
+      end
     when BBBOptions::CMD_PRESENCE
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_PRESENCE, data)
@@ -578,7 +589,7 @@ class BBBrute
       end
     end
 
-    if command.args.pairs
+    unless command.args.flat
       parsed_data[:pairs] = {}
       parsed_data[:entries].each do |date,entries|
         parsed_data[:pairs][date] = []
@@ -669,6 +680,7 @@ class BBBOptions
   CMD_ETA         = 'eta'
   CMD_ENTRIES     = 'entries'
   CMD_LOCATE      = 'locate'
+  CMD_WAITFOR     = 'waitfor'
   CMD_PRESENCE    = 'presence'
   CMD_ALIAS       = 'alias'
   CMD_SAVE        = 'save'
@@ -684,6 +696,7 @@ class BBBOptions
   MSG_DESCRIPTION_ETA         = 'Calculated remaining workload for a selected period'
   MSG_DESCRIPTION_ENTRIES     = 'Print all entries by person during a selected period'
   MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
+  MSG_DESCRIPTION_WAITFOR     = 'Wait for the next entry of a person'
   MSG_DESCRIPTION_PRESENCE    = 'List all first and last entries during a selected period'
   MSG_DESCRIPTION_ALIAS       = 'Manage aliases'
   MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
@@ -698,7 +711,8 @@ class BBBOptions
   MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default: today)'
   MSG_ARGUMENT_TO             = 'End of the date range to check (default: equals from)'
   MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
-  MSG_ARGUMENT_PAIRS          = 'Paired printout of linked ins and outs'
+  MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number'
+  MSG_ARGUMENT_FLAT           = 'Do not use paired printout of linked ins and outs'
   MSG_ARGUMENT_ALIAS_ID       = 'ID to create alias for'
   MSG_ARGUMENT_ALIAS_NAME     = 'Desired alias name'
   MSG_ARGUMENT_ALIAS_LIST     = 'List existing aliases'
@@ -812,8 +826,8 @@ class BBBOptions
         o.on('-w', '--[no-]week', MSG_ARGUMENT_WEEK)\
           {|b| @command.args.week = b}
 
-        o.on('-p', '--[no-]pairs', MSG_ARGUMENT_PAIRS)\
-          {|b| @command.args.pairs = b}
+        o.on('-f', '--[no-]flat', MSG_ARGUMENT_FLAT)\
+          {|b| @command.args.flat = b}
 
         o.separator ''
       end,
@@ -823,6 +837,18 @@ class BBBOptions
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
           {|s| @command.args.id = find_id(s)}
+
+        o.separator ''
+      end,
+
+      CMD_WAITFOR => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_WAITFOR, MSG_DESCRIPTION_WAITFOR]
+
+        o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
+          {|s| @command.args.id = find_id(s)}
+
+        o.on('-w', '--where WHERE', String, MSG_ARGUMENT_WHERE)\
+          {|s| @command.args.where = s}
 
         o.separator ''
       end,
@@ -966,7 +992,7 @@ class BBBOptions
       @command.args.from  = nil
       @command.args.to    = nil
       @command.args.week  = false
-      @command.args.pairs = false
+      @command.args.flat  = false
 
       @parsers[@command.instruction].parse!(argv)
       @command.args.from ||= Date.today
@@ -982,6 +1008,13 @@ class BBBOptions
       @command.args.id    = nil
       @command.args.from  = Date.today
       @command.args.to    = @command.args.from
+      @parsers[@command.instruction].parse!(argv)
+    when CMD_WAITFOR
+      @command.args       = OpenStruct.new
+      @command.args.id    = nil
+      @command.args.from  = Date.today
+      @command.args.to    = @command.args.from
+      @command.args.where = 'in'
       @parsers[@command.instruction].parse!(argv)
     when CMD_ALIAS
       @command.args       = OpenStruct.new
