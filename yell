@@ -6,5 +6,5 @@ if [ "$1" = "-t" ]; then
     shift
     osascript -e "display notification \"$*\" with title \"$TITLE\""
 else
-    osascript -e "display notification \"$*\""
+    osascript -e "display notification \"$*\" with title \"Yell\""
 fi
