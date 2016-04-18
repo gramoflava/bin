@@ -34,7 +34,9 @@ class BBBHelper
   MSG_GATE = {
     elevator: "Лифт",
     stairs:   "Лестница",
-    roof:     "Крыша"
+    roof:     "Крыша",
+    inner:    "Внутренняя дверь",
+    unknown:  "Неизвестная дверь",
   }
 
   MSG_DIRECTION = {
@@ -258,19 +260,20 @@ class BBBrute
   end
 
   FLOOR_DATA = {
-    "123"                => {old:true, place: :filimonava},
-    "407"                => {old:true, place: :platonava},
-    "4-й этаж, лестница" => {floor: 4, gate: :stairs},
-    "4-й этаж, лифт"     => {floor: 4, gate: :elevator},
-    "5-й этаж, лестница" => {floor: 5, gate: :stairs},
-    "5-й этаж, лифт"     => {floor: 5, gate: :elevator},
-    "6-й этаж, лестница" => {floor: 6, gate: :stairs},
-    "6-й этаж, лифт"     => {floor: 6, gate: :elevator},
-    "7-й этаж, лестница" => {floor: 7, gate: :stairs},
-    "8-й этаж, лестница" => {floor: 8, gate: :stairs},
-    "9 этаж, спортзал"   => {floor: 9, gate: :roof},
-    "9-й этаж, лестница" => {floor: 9, gate: :stairs},
-    "9-й этаж, лифт"     => {floor: 9, gate: :elevator}
+    "123"                   => {old:true, place: :filimonava},
+    "407"                   => {old:true, place: :platonava},
+    "2-й этаж, 207 кабинет" => {floor: 2, gate: :inner},
+    "4-й этаж, лестница"    => {floor: 4, gate: :stairs},
+    "4-й этаж, лифт"        => {floor: 4, gate: :elevator},
+    "5-й этаж, лестница"    => {floor: 5, gate: :stairs},
+    "5-й этаж, лифт"        => {floor: 5, gate: :elevator},
+    "6-й этаж, лестница"    => {floor: 6, gate: :stairs},
+    "6-й этаж, лифт"        => {floor: 6, gate: :elevator},
+    "7-й этаж, лестница"    => {floor: 7, gate: :stairs},
+    "8-й этаж, лестница"    => {floor: 8, gate: :stairs},
+    "9 этаж, спортзал"      => {floor: 9, gate: :roof},
+    "9-й этаж, лестница"    => {floor: 9, gate: :stairs},
+    "9-й этаж, лифт"        => {floor: 9, gate: :elevator}
   }
 
   MONTHS = {
@@ -606,7 +609,7 @@ class BBBrute
             pair[e[:direction]][:time] = e[:time]
             pair[e[:direction]][:gate] = e[:door][:gate]
           else
-            if pair[:floor] == e[:door][:floor]
+            if pair[:floor] == e[:door][:floor] # TODO: Implement Unknown door identification if e[:door] is nil
               if pair[:out].empty? and e[:direction] == :out
                 pair[:out][:time] = e[:time]
                 pair[:out][:gate] = e[:door][:gate]
