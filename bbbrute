@@ -592,7 +592,7 @@ class BBBrute
       end
     end
 
-    unless command.args.plain
+    unless command.args.plain or parsed_data.nil?
       parsed_data[:pairs] = {}
       parsed_data[:entries].each do |date,entries|
         parsed_data[:pairs][date] = []
