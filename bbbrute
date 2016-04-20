@@ -50,6 +50,11 @@ class BBBHelper
   MSG_LOCATE_OUT      = "Покинул здание"
   MSG_LOCATE_ROOF     = "На крыше"
 
+  SEPARATOR_HOLIDAY  = '/'
+  SEPARATOR_TIME     = ':'
+  SEPARATOR_DATE     = '.'
+
+
   def self.debug?
     @debug ||= false
   end
@@ -114,7 +119,7 @@ class BBBHelper
   end
 
   def self.timestr_to_seconds(str)
-    timearr = str.split(':').map {|s| s.to_i}
+    timearr = str.split(SEPARATOR_TIME).map {|s| s.to_i}
     timearr[0]*3600 + timearr[1]*60 + timearr[2]
   end
 
@@ -130,14 +135,15 @@ class BBBHelper
   end
 
   def self.out_of_office(params)
-    return MSG_HOURS_BUSINESS_TRIP if params[:business_trip]
-    return MSG_HOURS_HOLIDAY if params[:holiday]
-    return MSG_HOURS_SICK_LEAVE if params[:sick_leave]
-    return MSG_HOURS_UNPAID_LEAVE if params[:unpaid_leave]
-    return MSG_HOURS_DAY_OFF if params[:day_off]
-    return MSG_HOURS_VACATION if params[:vacation]
-    return MSG_HOURS_NO_CONTROL if params[:no_control]
-    return ""
+    s = []
+    s << MSG_HOURS_BUSINESS_TRIP if params[:business_trip]
+    s << MSG_HOURS_HOLIDAY if params[:holiday]
+    s << MSG_HOURS_SICK_LEAVE if params[:sick_leave]
+    s << MSG_HOURS_UNPAID_LEAVE if params[:unpaid_leave]
+    s << MSG_HOURS_DAY_OFF if params[:day_off]
+    s << MSG_HOURS_VACATION if params[:vacation]
+    s << MSG_HOURS_NO_CONTROL if params[:no_control]
+    return s.join(SEPARATOR_HOLIDAY)
   end
 
   def self.formatted_printout(format, data)
@@ -150,13 +156,13 @@ class BBBHelper
     when BBBOptions::CMD_HOURS
       puts "#{data[:name]} (#{data[:id]})"
 
-      l = find_max_length([MSG_HOURS_HOLIDAY,
-                           MSG_HOURS_DAY_OFF,
-                           MSG_HOURS_VACATION,
-                           MSG_HOURS_UNPAID_LEAVE,
-                           MSG_HOURS_SICK_LEAVE,
-                           MSG_HOURS_BUSINESS_TRIP,
-                           MSG_HOURS_NO_CONTROL])
+      l = find_max_combined_length([MSG_HOURS_HOLIDAY,
+                                    MSG_HOURS_DAY_OFF,
+                                    MSG_HOURS_VACATION,
+                                    MSG_HOURS_UNPAID_LEAVE,
+                                    MSG_HOURS_SICK_LEAVE,
+                                    MSG_HOURS_BUSINESS_TRIP,
+                                    MSG_HOURS_NO_CONTROL])
 
       data[:hours].each do |h|
         printf("%10s  %8s  %4.2f  %-#{l}s  %s\n",
@@ -164,7 +170,7 @@ class BBBHelper
                h[:hours],
                h[:rate],
                out_of_office(h),
-               h[:comments].join('/'))
+               h[:comments].uniq.join(SEPARATOR_HOLIDAY))
       end
     when BBBOptions::CMD_ETA
       puts "#{data[:name]} (#{data[:id]})"
@@ -244,6 +250,13 @@ class BBBHelper
 
   def self.find_max_length(lines)
     lines.map{|l| l.length}.max
+  end
+
+  def self.find_max_combined_length(lines)
+    return lines[0].length if lines.count == 1
+
+    lines.sort_by!{|a| a.length}.reverse!
+    return lines[0].length + SEPARATOR_HOLIDAY.length + lines[1].length
   end
 end
 
@@ -571,7 +584,7 @@ class BBBrute
           date_p[0] = '0' + date_p[0] if date_p[0].length == 1
           date_p[1] = MONTHS[date_p[1]]
 
-          date = date_p.take(3).join('.')
+          date = date_p.take(3).join(BBBHelper::SEPARATOR_DATE)
 
           parsed_data[:entries][date] = [] unless parsed_data[:entries][date]
 
