@@ -725,7 +725,7 @@ class BBBOptions
   MSG_OPTION_MACHINE          = 'Output data as a JSON for further processing'
   MSG_ARGUMENT_ID             = 'ID or alias of the person to check timesheet for (default: logged user)'
   MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default: today)'
-  MSG_ARGUMENT_TO             = 'End of the date range to check (default: equals from)'
+  MSG_ARGUMENT_TO             = 'End of the date range to check (default: today)'
   MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
   MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number'
   MSG_ARGUMENT_PLAIN          = 'Do not use paired printout of linked ins and outs'
@@ -994,13 +994,14 @@ class BBBOptions
       @command.args.week  = false
 
       @parsers[@command.instruction].parse!(argv)
-      @command.args.from ||= Date.today
 
       if @command.args.week
+        @command.args.from ||= Date.today
         @command.args.from  = BBBHelper.cwb(@command.args.from)
         @command.args.to    = BBBHelper.cwe(@command.args.from)
       else
-        @command.args.to ||= @command.args.from
+        @command.args.from ||= Date.today
+        @command.args.to   ||= Date.today
       end
     when CMD_ENTRIES
       @command.args       = OpenStruct.new
@@ -1011,25 +1012,26 @@ class BBBOptions
       @command.args.plain = false
 
       @parsers[@command.instruction].parse!(argv)
-      @command.args.from ||= Date.today
 
       if @command.args.week
+        @command.args.from ||= Date.today
         @command.args.from  = BBBHelper.cwb(@command.args.from)
         @command.args.to    = BBBHelper.cwe(@command.args.from)
       else
-        @command.args.to ||= @command.args.from
+        @command.args.from ||= Date.today
+        @command.args.to   ||= Date.today
       end
     when CMD_LOCATE
       @command.args       = OpenStruct.new
       @command.args.id    = nil
       @command.args.from  = Date.today
-      @command.args.to    = @command.args.from
+      @command.args.to    = Date.today
       @parsers[@command.instruction].parse!(argv)
     when CMD_WAITFOR
       @command.args       = OpenStruct.new
       @command.args.id    = nil
       @command.args.from  = Date.today
-      @command.args.to    = @command.args.from
+      @command.args.to    = Date.today
       @command.args.where = 'in'
       @parsers[@command.instruction].parse!(argv)
     when CMD_ALIAS
