@@ -1053,10 +1053,12 @@ end
 
 begin
   options = BBBOptions.new
+  argv = options.parse(ARGV)
+
   b = BBBrute.new(options)
+
   b.auth
 
-  argv = options.parse(ARGV)
   command = options.parse_command(argv)
 
   BBBHelper.debug = options.debug
