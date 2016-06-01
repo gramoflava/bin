@@ -37,6 +37,7 @@ class BBBHelper
     roof:     "Крыша",
     inner:    "Внутренняя дверь",
     unknown:  "Неизвестная дверь",
+    IBM:      "IBM"
   }
 
   MSG_DIRECTION = {
@@ -282,6 +283,7 @@ class BBBrute
     "5-й этаж, лифт"        => {floor: 5, gate: :elevator},
     "6-й этаж, лестница"    => {floor: 6, gate: :stairs},
     "6-й этаж, лифт"        => {floor: 6, gate: :elevator},
+    "6-й этаж, IBM"         => {floor: 6, gate: :IBM},
     "7-й этаж, лестница"    => {floor: 7, gate: :stairs},
     "8-й этаж, лестница"    => {floor: 8, gate: :stairs},
     "9 этаж, спортзал"      => {floor: 9, gate: :roof},
