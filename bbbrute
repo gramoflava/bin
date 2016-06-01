@@ -964,6 +964,8 @@ class BBBOptions
 
       case params[:aliases][:op]
       when :add
+        raise "Cannot save alias: wrong input." \
+          if params[:aliases][:alias].nil? or params[:aliases][:id].nil?
         cache[:aliases][params[:aliases][:alias]] = params[:aliases][:id]
       end
     end
