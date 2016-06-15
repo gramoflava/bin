@@ -277,6 +277,7 @@ class BBBrute
     "123"                   => {old:true, place: :filimonava},
     "407"                   => {old:true, place: :platonava},
     "2-й этаж, 207 кабинет" => {floor: 2, gate: :inner},
+    "3-й этаж, 307 кабинет" => {floor: 3, gate: :inner},
     "4-й этаж, лестница"    => {floor: 4, gate: :stairs},
     "4-й этаж, лифт"        => {floor: 4, gate: :elevator},
     "5-й этаж, лестница"    => {floor: 5, gate: :stairs},
