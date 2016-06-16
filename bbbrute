@@ -231,7 +231,7 @@ class BBBHelper
         entry = data[:entries].first[1].last
 
         if entry[:direction] == :out
-          printf("%s: %s\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT)
+          printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT, entry[:time])
         elsif entry[:direction] == :in
           if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
             printf("%s: %s\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF)
