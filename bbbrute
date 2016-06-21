@@ -395,7 +395,12 @@ class BBBrute
     when BBBOptions::CMD_WAITFOR
       date = Date.today.strftime('%d.%m.%Y')
       loop do
-        data = entries(command)
+        begin
+          data = entries(command)
+        rescue Exception => e
+          BBBHelper.p_warning e.message
+        end
+
         if data and data[:entries] and data[:entries][date].last
           case command.args.where
           when 'in', 'out'
