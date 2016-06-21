@@ -234,9 +234,9 @@ class BBBHelper
           printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT, entry[:time])
         elsif entry[:direction] == :in
           if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-            printf("%s: %s\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF)
+            printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF, entry[:time])
           else
-            printf("%s: %d %s\n", MSG_LOCATE_LOCATION, entry[:door][:floor], MSG_LOCATE_FLOOR)
+            printf("%s: %d %s (%s)\n", MSG_LOCATE_LOCATION, entry[:door][:floor], MSG_LOCATE_FLOOR, entry[:time])
           end
         end
       end
