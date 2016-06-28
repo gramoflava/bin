@@ -1,10 +1,11 @@
 #!/bin/bash
 
-if [ "$1" = "-t" ]; then
-    shift
-    TITLE=$1
-    shift
-    osascript -e "display notification \"$*\" with title \"$TITLE\""
-else
-    osascript -e "display notification \"$*\" with title \"Yell\""
+TITLE="$1"
+MESSAGE="$2"
+
+if [ -z "${MESSAGE}" ]; then
+    MESSAGE="${TITLE}"
+    TITLE="Yell"
 fi
+
+osascript -e "display notification \"${MESSAGE}\" with title \"${TITLE}\""
