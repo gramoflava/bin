@@ -519,15 +519,14 @@ class BBBrute
           hours_data[:holiday] = true if h[0][0].match(/Red/)
           hours_data[:date]           = h[0][0].gsub(/[^0-9.]+/, '')
           hours_data[:hours]          = h[1][0].gsub(/[^0-9:]+/, '')
-          hours_data[:present]        = h[2][0].gsub(/[^0-9:]+/, '')
-          hours_data[:rate]           = h[3][0].sub(',', '.').to_f
+          hours_data[:rate]           = h[2][0].sub(',', '.').to_f
           [
-            {index: 4, atom: :day_off},
-            {index: 5, atom: :vacation},
-            {index: 6, atom: :unpaid_leave},
-            {index: 7, atom: :sick_leave},
-            {index: 8, atom: :business_trip},
-            {index: 9, atom: :no_control}
+            {index: 3, atom: :day_off},
+            {index: 4, atom: :vacation},
+            {index: 5, atom: :unpaid_leave},
+            {index: 6, atom: :sick_leave},
+            {index: 7, atom: :business_trip},
+            {index: 8, atom: :no_control}
           ].each do |field|
             if h[field[:index]][0] != '&nbsp'
               hours_data[field[:atom]] = true
