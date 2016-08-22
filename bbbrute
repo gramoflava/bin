@@ -740,6 +740,8 @@ class BBBOptions
   MSG_ARGUMENT_ALIAS_ID       = 'ID to create alias for'
   MSG_ARGUMENT_ALIAS_NAME     = 'Desired alias name'
   MSG_ARGUMENT_ALIAS_LIST     = 'List existing aliases'
+  MSG_ALIAS_NOT_FOUND         = 'No suitable alias found'
+  MSG_ALIAS_MULTIPLE_FOUND    = 'Multiple aliases detected'
 
   def initialize
     @options = OpenStruct.new
@@ -952,7 +954,19 @@ class BBBOptions
   def find_id(input)
     Integer(input)
   rescue
-    load_cache[:aliases][input]
+    aliases = load_cache[:aliases]
+    aliases.select! {|k,v| k.to_s.match /#{input}/}
+
+    return aliases.values.first if aliases.length == 1
+
+    if aliases.length == 0
+      BBBHelper::p_error MSG_ALIAS_NOT_FOUND
+    else
+      BBBHelper::p_error MSG_ALIAS_MULTIPLE_FOUND
+      BBBHelper::formatted_printout(BBBOptions::CMD_ALIAS, aliases)
+    end
+
+    exit 1
   end
 
   def load_cache(root = nil)
