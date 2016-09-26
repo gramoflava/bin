@@ -264,7 +264,7 @@ end
 
 class BBBrute
   SESSION_FILE = File.join(Dir.home, '.bbbrute/cookies.b64')
-  WAITFOR_TIMEOUT = 2
+  WAIT_TIMEOUT = 2
 
   module STAT
     LATENESS  =  0
@@ -392,7 +392,7 @@ class BBBrute
     when BBBOptions::CMD_LOCATE
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
-    when BBBOptions::CMD_WAITFOR
+    when BBBOptions::CMD_WAIT
       date = Date.today.strftime('%d.%m.%Y')
       loop do
         begin
@@ -416,7 +416,7 @@ class BBBrute
           end
         end
 
-        sleep WAITFOR_TIMEOUT
+        sleep WAIT_TIMEOUT
       end
     when BBBOptions::CMD_PRESENCE
       data = entries(command)
@@ -704,7 +704,7 @@ class BBBOptions
   CMD_ETA         = 'eta'
   CMD_ENTRIES     = 'entries'
   CMD_LOCATE      = 'locate'
-  CMD_WAITFOR     = 'waitfor'
+  CMD_WAIT        = 'wait'
   CMD_PRESENCE    = 'presence'
   CMD_ALIAS       = 'alias'
   CMD_SAVE        = 'save'
@@ -720,7 +720,7 @@ class BBBOptions
   MSG_DESCRIPTION_ETA         = 'Calculated remaining workload for a selected period'
   MSG_DESCRIPTION_ENTRIES     = 'Print all entries by person during a selected period'
   MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
-  MSG_DESCRIPTION_WAITFOR     = 'Wait for the next entry of a person'
+  MSG_DESCRIPTION_WAIT        = 'Wait for the next entry of a person'
   MSG_DESCRIPTION_PRESENCE    = 'List all first and last entries during a selected period'
   MSG_DESCRIPTION_ALIAS       = 'Manage aliases'
   MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
@@ -867,8 +867,8 @@ class BBBOptions
         o.separator ''
       end,
 
-      CMD_WAITFOR => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_PRINTOUT % [CMD_WAITFOR, MSG_DESCRIPTION_WAITFOR]
+      CMD_WAIT => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_WAIT, MSG_DESCRIPTION_WAIT]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
           {|s| @command.args.id = find_id(s)}
@@ -1051,7 +1051,7 @@ class BBBOptions
       @command.args.from  = Date.today
       @command.args.to    = Date.today
       @parsers[@command.instruction].parse!(argv)
-    when CMD_WAITFOR
+    when CMD_WAIT
       @command.args       = OpenStruct.new
       @command.args.id    = nil
       @command.args.from  = Date.today
