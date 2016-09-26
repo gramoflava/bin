@@ -301,7 +301,7 @@ class BBBrute
     'июня'     => '06',
     'июля'     => '07',
     'августа'  => '08',
-    'сентября' => '08',
+    'сентября' => '09',
     'октября'  => '10',
     'ноября'   => '11',
     'декабря'  => '12'
@@ -405,12 +405,12 @@ class BBBrute
           case command.args.where
           when 'in', 'out'
             if data[:entries][date].last[:direction].to_s == command.args.where
-              puts 'inout'
+              puts data[:entries][date].last
               exit 0
             end
           else
             if data[:entries][date].last[:direction] == :in and data[:entries][date].last[:door][:floor].to_s == command.args.where
-              puts '8'
+              puts data[:entries][date].last
               exit 0
             end
           end
