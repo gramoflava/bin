@@ -1,11 +1,36 @@
 #!/bin/bash
 
-TITLE="$1"
-MESSAGE="$2"
+TITLE='Yell'
+MESSAGE=''
 
-if [ -z "${MESSAGE}" ]; then
-    MESSAGE="${TITLE}"
-    TITLE="Yell"
+if [ "-t" = "$1" ]; then
+    TITLE="$2"
+    shift && shift
 fi
 
-osascript -e "display notification \"${MESSAGE}\" with title \"${TITLE}\""
+MESSAGE="$*"
+
+escape_for_osa() {
+    echo "$*" | sed 's/"/\\"/g'
+}
+
+notify_macos() {
+    local title="$1" && shift
+    local message=$(escape_for_osa "$*")
+
+    osascript <<EOS
+set Message to "${message}"
+set Title to "${title}"
+display notification Message with title Title
+EOS
+}
+
+case `uname` in
+    'Darwin')
+        notify_macos "${TITLE}" "${MESSAGE}"
+        ;;
+    *)
+        echo "No handler to notify" >&2
+        exit 1
+esac
+
