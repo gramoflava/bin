@@ -46,9 +46,9 @@ class BBBHelper
   }
 
   MSG_LOCATE_LOCATION = "Местонахождение"
-  MSG_LOCATE_ABSCENT  = "Не приходил"
+  MSG_LOCATE_ABSCENT  = "Не приходил(а)"
   MSG_LOCATE_FLOOR    = "этаж"
-  MSG_LOCATE_OUT      = "Покинул здание"
+  MSG_LOCATE_OUT      = "Покинул(а) здание"
   MSG_LOCATE_ROOF     = "На крыше"
 
   SEPARATOR_HOLIDAY  = '/'
@@ -149,7 +149,7 @@ class BBBHelper
 
   def self.formatted_printout(format, data)
     if data.nil?
-      puts MSG_DATA_NO_DATA
+      puts MSG_LOCATE_ABSCENT
       exit 0
     end
 
