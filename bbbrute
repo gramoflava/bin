@@ -15,6 +15,7 @@ class BBBHelper
 
   MSG_ETA_PLANNED   = "Запланировано:"
   MSG_ETA_ACTUAL    = "Отработано:"
+  MSG_ETA_TODAY     = "За сегодня:"
   MSG_ETA_OVERTIME  = "Переработано:"
   MSG_ETA_REMAINING = "Недоработано:"
   MSG_ETA_FINISHED  = "Отработка была в:"
@@ -178,12 +179,14 @@ class BBBHelper
 
       l = find_max_length([MSG_ETA_PLANNED,
                            MSG_ETA_ACTUAL,
+                           MSG_ETA_TODAY,
                            MSG_ETA_OVERTIME,
                            MSG_ETA_REMAINING,
                            MSG_ETA_FINISHED,
                            MSG_ETA_FINISH])
       printf("%-#{l}s %11s\n", MSG_ETA_PLANNED, seconds_to_timestr(data[:eta][:planned]))
       printf("%-#{l}s %11s\n", MSG_ETA_ACTUAL, seconds_to_timestr(data[:eta][:actual]))
+      printf("%-#{l}s %11s\n", MSG_ETA_TODAY, seconds_to_timestr(data[:eta][:today])) if data[:eta][:today] and data[:eta][:today] != 0
       if data[:eta][:remaining] < 0
         printf("%-#{l}s %11s\n", MSG_ETA_OVERTIME, seconds_to_timestr(data[:eta][:remaining]))
         printf("%-#{l}s %11s\n", MSG_ETA_FINISHED, seconds_to_timestr(data[:eta][:finish])) if data[:eta][:finish]
@@ -667,7 +670,15 @@ class BBBrute
   end
 
   def fill_eta(command, data)
+    today = 0
+
     data[:eta] = data[:hours].map do |h|
+      BBBHelper.p_debug "Extracted date: " + h[:date]
+
+      if h[:date] == Date.today.strftime('%d.%m.%Y')
+        today = BBBHelper.timestr_to_seconds(h[:hours])
+      end
+
       if h[:holiday] or h[:day_off] or h[:vacation] or
         h[:unpaid_leave] or h[:sick_leave] or
         h[:business_trip] or h[:no_control]
@@ -685,6 +696,8 @@ class BBBrute
     end.reduce do |h1, h2|
       {planned: h1[:planned] + h2[:planned], actual: h1[:actual] + h2[:actual]}
     end
+
+    data[:eta][:today] = today
 
     data[:eta][:remaining] = data[:eta][:planned] - data[:eta][:actual]
     if command.args.to >= Date.today
