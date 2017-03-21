@@ -92,6 +92,14 @@ class BBBHelper
     raise 'Cookies not extracted for an unknown reason.'
   end
 
+  def self.p_dump(filename, contents)
+    if debug?
+      File.open(filename, 'w') do |file|
+        file.write(contents)
+      end
+    end
+  end
+
   def self.p_debug(lines)
     if debug?
       lines.split("\n").each do |line|
@@ -482,9 +490,7 @@ class BBBrute
 
     body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    # BBBHelper::p_debug 'BODY'
-    # BBBHelper::p_debug body
-    # BBBHelper::p_debug 'END BODY'
+    BBBHelper::p_dump('.bbbrute/doors.html', body)
 
     parsed_data = nil
 
@@ -566,9 +572,7 @@ class BBBrute
 
     body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    # BBBHelper::p_debug 'BODY'
-    # BBBHelper::p_debug body
-    # BBBHelper::p_debug 'END BODY'
+    BBBHelper::p_dump('.bbbrute/entries.html', body)
 
     parsed_data = nil
 
@@ -971,6 +975,24 @@ class BBBOptions
     aliases.select! {|k,v| k.to_s.match /#{input}/}
 
     return aliases.values.first if aliases.length == 1
+
+    if aliases.length == 0
+      BBBHelper::p_error MSG_ALIAS_NOT_FOUND
+    else
+      BBBHelper::p_error MSG_ALIAS_MULTIPLE_FOUND
+      BBBHelper::formatted_printout(BBBOptions::CMD_ALIAS, aliases)
+    end
+
+    exit 1
+  end
+
+  def find_alias(input)
+    String(input)
+  rescue
+    aliases = load_cache[:aliases]
+    aliases.select! {|k,v| v.to_s.match /#{input.to_s}/}
+
+    return aliases.keys.first if aliases.length == 1
 
     if aliases.length == 0
       BBBHelper::p_error MSG_ALIAS_NOT_FOUND
