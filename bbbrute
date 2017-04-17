@@ -366,7 +366,7 @@ class BBBrute
     query += "&eD=#{edate.day}&eMn=#{edate.month}&eYr=#{edate.year}"
   end
 
-  def auth
+  def do_auth
     load_session
     if test_connection_response != '200'
       BBBHelper::p_warning "Session expired. Logging in..."
@@ -413,6 +413,13 @@ class BBBrute
 
   def execute(command, params = {})
     BBBHelper.p_debug 'Parsed command: ' + command.to_s
+
+    if command.instruction == BBBOptions::CMD_SAVE
+      @options.save_config
+      exit 0
+    end
+
+    do_auth
 
     case command.instruction
     when BBBOptions::CMD_HOURS
@@ -465,8 +472,6 @@ class BBBrute
       else
         @options.to_cache({aliases: {op: :add, alias: command.args.alias, id: command.args.id}})
       end
-    when BBBOptions::CMD_SAVE
-      @options.save_config
     when BBBOptions::CMD_QUERY
       if params[:query_mode]
         puts 'Unable to execute while in query mode.'
@@ -1155,8 +1160,6 @@ begin
   argv = options.parse(ARGV)
 
   b = BBBrute.new(options)
-
-  b.auth
 
   command = options.parse_command(argv)
 
