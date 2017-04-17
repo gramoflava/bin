@@ -263,19 +263,15 @@ class BBBHelper
     when BBBOptions::CMD_LOCATE
       puts "#{data[:name]} (#{data[:id]})"
 
-      if data[:entries].nil? or data[:entries].empty?
-        printf("%s: %s\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ABSCENT)
-      else
-        entry = data[:entries].first[1].last
+      entry = data[:last_entry]
 
-        if entry[:direction] == :out
-          printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT, entry[:time])
-        elsif entry[:direction] == :in
-          if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-            printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF, entry[:time])
-          else
-            printf("%s: %d %s (%s)\n", MSG_LOCATE_LOCATION, entry[:door][:floor], MSG_LOCATE_FLOOR, entry[:time])
-          end
+      if entry[:direction] == :out
+        printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT, entry[:time])
+      elsif entry[:direction] == :in
+        if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
+          printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF, entry[:time])
+        else
+          printf("%s: %d %s (%s)\n", MSG_LOCATE_LOCATION, entry[:door][:floor], MSG_LOCATE_FLOOR, entry[:time])
         end
       end
     when BBBOptions::CMD_ALIAS
@@ -429,7 +425,7 @@ class BBBrute
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
     when BBBOptions::CMD_LOCATE
-      data = entries(command)
+      data = entries(command, {find_last_entry: true})
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
     when BBBOptions::CMD_WAIT
       date = Date.today.strftime('%d.%m.%Y')
@@ -700,6 +696,16 @@ class BBBrute
         end
         parsed_data[:pairs][date] << pair
       end
+    end
+
+    if params[:find_last_entry]
+      if parsed_data.nil? or parsed_data[:entries].nil? or parsed_data[:entries].empty?
+        return {error: true, error_msg: :no_entries_detected}
+      end
+
+      parsed_data[:last_entry] = parsed_data[:entries].first[1].last
+      parsed_data.tap { |pd| pd.delete(:entries) }
+      parsed_data.tap { |pd| pd.delete(:pairs) }
     end
 
     parsed_data
