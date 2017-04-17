@@ -169,7 +169,7 @@ class BBBHelper
 
   def self.formatted_printout(format, data)
 
-    data ||= {format: format, error: true, error_msg: :no_data_found}
+    data ||= {error: true, error_msg: :no_data_found}
 
     if data[:error]
       if machine_friendly?
@@ -578,7 +578,11 @@ class BBBrute
       end
     end
 
-    parsed_data = fill_eta(command, parsed_data) if params[:fill_eta]
+    if params[:fill_eta]
+      parsed_data = fill_eta(command, parsed_data)
+      parsed_data.tap { |pd| pd.delete(:hours) }
+    end
+
     parsed_data
   end
 
