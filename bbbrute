@@ -708,6 +708,8 @@ class BBBrute
       parsed_data.tap { |pd| pd.delete(:pairs) }
     end
 
+    parsed_data.tap { |pd| pd.delete(:entries) } if parsed_data[:pairs]
+
     parsed_data
   end
 
