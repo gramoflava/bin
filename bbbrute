@@ -93,6 +93,8 @@ class BBBHelper
   end
 
   def self.p_dump(filename, contents)
+    filepath = File.join(Dir.home, '.bbbrute', filename)
+
     if debug?
       File.open(filename, 'w') do |file|
         file.write(contents)
@@ -400,7 +402,11 @@ class BBBrute
       BBBHelper::formatted_printout(BBBOptions::CMD_ETA, data)
     when BBBOptions::CMD_ENTRIES
       data = entries(command)
-      BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
+      if command.machine_friendly
+        data
+      else
+        BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
+      end
     when BBBOptions::CMD_LOCATE
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
@@ -491,7 +497,7 @@ class BBBrute
 
     body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    BBBHelper::p_dump('.bbbrute/doors.html', body)
+    BBBHelper::p_dump('doors.html', body)
 
     parsed_data = nil
 
@@ -573,7 +579,7 @@ class BBBrute
 
     body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    BBBHelper::p_dump('.bbbrute/entries.html', body)
+    BBBHelper::p_dump('entries.html', body)
 
     parsed_data = nil
 
@@ -714,8 +720,8 @@ end
 
 
 class BBBOptions
-  CONFIG_FILE = File.join(Dir.home, '.bbbrute/config.yml')
-  CACHE_FILE  = File.join(Dir.home, '.bbbrute/cache.yml')
+  CONFIG_FILE = File.join(Dir.home, '.bbbrute', 'config.yml')
+  CACHE_FILE  = File.join(Dir.home, '.bbbrute', 'cache.yml')
 
   CMD_GLOBAL      = ''
   CMD_HOURS       = 'hours'
