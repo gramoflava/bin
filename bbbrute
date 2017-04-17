@@ -168,9 +168,17 @@ class BBBHelper
   end
 
   def self.formatted_printout(format, data)
-    if data.nil?
-      puts MSG_LOCATE_ABSCENT
-      exit 0
+
+    data ||= {format: format, error: true, error_msg: :no_data_found}
+
+    if data[:error]
+      if machine_friendly?
+        puts JSON.pretty_generate(data)
+      else
+        puts MSG_LOCATE_ABSCENT
+      end
+
+      exit 1
     end
 
     if machine_friendly?
