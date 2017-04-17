@@ -168,117 +168,118 @@ class BBBHelper
   end
 
   def self.formatted_printout(format, data)
+    data.each do |personal_data|
+      personal_data ||= {error: true, error_msg: :no_data_found}
 
-    data ||= {error: true, error_msg: :no_data_found}
-
-    if data[:error]
-      if machine_friendly?
-        puts JSON.pretty_generate(data)
-      else
-        puts MSG_LOCATE_ABSCENT
-      end
-
-      exit 1
-    end
-
-    if machine_friendly?
-      puts JSON.pretty_generate(data)
-      exit 0
-    end
-
-    p_debug "Priniting data (#{format}):"
-    p_debug data.to_s
-
-    case format
-    when BBBOptions::CMD_HOURS
-      puts "#{data[:name]} (#{data[:id]})"
-
-      l = find_max_combined_length([MSG_HOURS_HOLIDAY,
-                                    MSG_HOURS_DAY_OFF,
-                                    MSG_HOURS_VACATION,
-                                    MSG_HOURS_UNPAID_LEAVE,
-                                    MSG_HOURS_SICK_LEAVE,
-                                    MSG_HOURS_BUSINESS_TRIP,
-                                    MSG_HOURS_NO_CONTROL])
-
-      data[:hours].each do |h|
-        printf("%10s  %8s  %4.2f  %-#{l}s  %s\n",
-               h[:date],
-               h[:hours],
-               h[:rate],
-               out_of_office(h),
-               h[:comments].uniq.join(SEPARATOR_HOLIDAY))
-      end
-    when BBBOptions::CMD_ETA
-      puts "#{data[:name]} (#{data[:id]})"
-
-      l = find_max_length([MSG_ETA_PLANNED,
-                           MSG_ETA_ACTUAL,
-                           MSG_ETA_TODAY,
-                           MSG_ETA_OVERTIME,
-                           MSG_ETA_REMAINING,
-                           MSG_ETA_FINISHED,
-                           MSG_ETA_FINISH])
-      printf("%-#{l}s %11s\n", MSG_ETA_PLANNED, seconds_to_timestr(data[:eta][:planned]))
-      printf("%-#{l}s %11s\n", MSG_ETA_ACTUAL, seconds_to_timestr(data[:eta][:actual]))
-      printf("%-#{l}s %11s\n", MSG_ETA_TODAY, seconds_to_timestr(data[:eta][:today])) if data[:eta][:today] and data[:eta][:today] != 0
-      if data[:eta][:remaining] < 0
-        printf("%-#{l}s %11s\n", MSG_ETA_OVERTIME, seconds_to_timestr(data[:eta][:remaining]))
-        printf("%-#{l}s %11s\n", MSG_ETA_FINISHED, seconds_to_timestr(data[:eta][:finish])) if data[:eta][:finish]
-      else
-        printf("%-#{l}s %11s\n", MSG_ETA_REMAINING, seconds_to_timestr(data[:eta][:remaining]))
-        printf("%-#{l}s %11s\n", MSG_ETA_FINISH, seconds_to_timestr(data[:eta][:finish])) if data[:eta][:finish]
-      end
-    when BBBOptions::CMD_ENTRIES
-      puts "#{data[:name]} (#{data[:id]})"
-
-      if data[:pairs]
-        lg = find_max_length(MSG_GATE.values)
-        data[:pairs].each do |date, pairs|
-          puts date
-          pairs.each do |pair|
-            printf("%d %s:  %#{lg}s  %8s - %8s  %-#{lg}s\n",
-                   pair[:floor],
-                     MSG_LOCATE_FLOOR,
-                     MSG_GATE[pair[:in][:gate]],
-                     pair[:in][:time],
-                     pair[:out][:time],
-                     MSG_GATE[pair[:out][:gate]])
-          end
-        end
-      else
-        lg = find_max_length(MSG_GATE.values)
-        le = find_max_length(MSG_DIRECTION.values)
-        data[:entries].each do |date, entries|
-          puts date
-          entries.each do |entry|
-            printf("%s  %d  %-#{le}s  %-#{lg}s\n",
-                   entry[:time],
-                     entry[:door][:floor],
-                     MSG_DIRECTION[entry[:direction]],
-                     MSG_GATE[entry[:door][:gate]])
-          end
-        end
-      end
-    when BBBOptions::CMD_LOCATE
-      puts "#{data[:name]} (#{data[:id]})"
-
-      entry = data[:last_entry]
-
-      if entry[:direction] == :out
-        printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT, entry[:time])
-      elsif entry[:direction] == :in
-        if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-          printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF, entry[:time])
+      if personal_data[:error]
+        if machine_friendly?
+          puts JSON.pretty_generate(personal_data)
         else
-          printf("%s: %d %s (%s)\n", MSG_LOCATE_LOCATION, entry[:door][:floor], MSG_LOCATE_FLOOR, entry[:time])
+          puts MSG_LOCATE_ABSCENT
         end
+
+        exit 1
       end
-    when BBBOptions::CMD_ALIAS
-      lk = find_max_length(data.keys)
-      lv = find_max_length(data.values.map{|i| i.to_s})
-      data.each do |al, id|
-        printf("%-#{lk}s:  %#{lv}s\n", al, id)
+
+      if machine_friendly?
+        puts JSON.pretty_generate(personal_data)
+        exit 0
+      end
+
+      p_debug "Priniting personal_data (#{format}):"
+      p_debug personal_data.to_s
+
+      case format
+      when BBBOptions::CMD_HOURS
+        puts "#{personal_data[:name]} (#{personal_data[:id]})"
+
+        l = find_max_combined_length([MSG_HOURS_HOLIDAY,
+                                      MSG_HOURS_DAY_OFF,
+                                      MSG_HOURS_VACATION,
+                                      MSG_HOURS_UNPAID_LEAVE,
+                                      MSG_HOURS_SICK_LEAVE,
+                                      MSG_HOURS_BUSINESS_TRIP,
+                                      MSG_HOURS_NO_CONTROL])
+
+        personal_data[:hours].each do |h|
+          printf("%10s  %8s  %4.2f  %-#{l}s  %s\n",
+                 h[:date],
+                   h[:hours],
+                   h[:rate],
+                   out_of_office(h),
+                   h[:comments].uniq.join(SEPARATOR_HOLIDAY))
+        end
+      when BBBOptions::CMD_ETA
+        puts "#{personal_data[:name]} (#{personal_data[:id]})"
+
+        l = find_max_length([MSG_ETA_PLANNED,
+                             MSG_ETA_ACTUAL,
+                             MSG_ETA_TODAY,
+                             MSG_ETA_OVERTIME,
+                             MSG_ETA_REMAINING,
+                             MSG_ETA_FINISHED,
+                             MSG_ETA_FINISH])
+        printf("%-#{l}s %11s\n", MSG_ETA_PLANNED, seconds_to_timestr(personal_data[:eta][:planned]))
+        printf("%-#{l}s %11s\n", MSG_ETA_ACTUAL, seconds_to_timestr(personal_data[:eta][:actual]))
+        printf("%-#{l}s %11s\n", MSG_ETA_TODAY, seconds_to_timestr(personal_data[:eta][:today])) if personal_data[:eta][:today] and personal_data[:eta][:today] != 0
+        if personal_data[:eta][:remaining] < 0
+          printf("%-#{l}s %11s\n", MSG_ETA_OVERTIME, seconds_to_timestr(personal_data[:eta][:remaining]))
+          printf("%-#{l}s %11s\n", MSG_ETA_FINISHED, seconds_to_timestr(personal_data[:eta][:finish])) if personal_data[:eta][:finish]
+        else
+          printf("%-#{l}s %11s\n", MSG_ETA_REMAINING, seconds_to_timestr(personal_data[:eta][:remaining]))
+          printf("%-#{l}s %11s\n", MSG_ETA_FINISH, seconds_to_timestr(personal_data[:eta][:finish])) if personal_data[:eta][:finish]
+        end
+      when BBBOptions::CMD_ENTRIES
+        puts "#{personal_data[:name]} (#{personal_data[:id]})"
+
+        if personal_data[:pairs]
+          lg = find_max_length(MSG_GATE.values)
+          personal_data[:pairs].each do |date, pairs|
+            puts date
+            pairs.each do |pair|
+              printf("%d %s:  %#{lg}s  %8s - %8s  %-#{lg}s\n",
+                     pair[:floor],
+                       MSG_LOCATE_FLOOR,
+                       MSG_GATE[pair[:in][:gate]],
+                       pair[:in][:time],
+                       pair[:out][:time],
+                       MSG_GATE[pair[:out][:gate]])
+            end
+          end
+        else
+          lg = find_max_length(MSG_GATE.values)
+          le = find_max_length(MSG_DIRECTION.values)
+          personal_data[:entries].each do |date, entries|
+            puts date
+            entries.each do |entry|
+              printf("%s  %d  %-#{le}s  %-#{lg}s\n",
+                     entry[:time],
+                       entry[:door][:floor],
+                       MSG_DIRECTION[entry[:direction]],
+                       MSG_GATE[entry[:door][:gate]])
+            end
+          end
+        end
+      when BBBOptions::CMD_LOCATE
+        puts "#{personal_data[:name]} (#{personal_data[:id]})"
+
+        entry = personal_data[:last_entry]
+
+        if entry[:direction] == :out
+          printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT, entry[:time])
+        elsif entry[:direction] == :in
+          if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
+            printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF, entry[:time])
+          else
+            printf("%s: %d %s (%s)\n", MSG_LOCATE_LOCATION, entry[:door][:floor], MSG_LOCATE_FLOOR, entry[:time])
+          end
+        end
+      when BBBOptions::CMD_ALIAS
+        lk = find_max_length(personal_data.keys)
+        lv = find_max_length(personal_data.values.map{|i| i.to_s})
+        personal_data.each do |al, id|
+          printf("%-#{lk}s:  %#{lv}s\n", al, id)
+        end
       end
     end
   end
@@ -470,7 +471,7 @@ class BBBrute
           BBBHelper::formatted_printout(BBBOptions::CMD_ALIAS, cache[:aliases])
         end
       else
-        @options.to_cache({aliases: {op: :add, alias: command.args.alias, id: command.args.id}})
+        @options.to_cache({aliases: {op: :add, alias: command.args.alias, ids: command.args.ids}})
       end
     when BBBOptions::CMD_QUERY
       if params[:query_mode]
@@ -502,178 +503,194 @@ class BBBrute
   end
 
   def doors(command, params = {})
-    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + build_query(STAT::HOURS, {
-      :id => command.args.id,
-      :bdate => command.args.from,
-      :edate => command.args.to}))
+    results = command.args.ids.map do |id|
+      uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + build_query(STAT::HOURS, {
+        :id => (id == 0 ? nil : id),
+        :bdate => command.args.from,
+        :edate => command.args.to}))
 
-    request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
-    request.basic_auth(@options.login, @options.password)
-    request.add_field('cookie', $cookies)
-    response = @http.request(request)
+      request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
+      request.basic_auth(@options.login, @options.password)
+      request.add_field('cookie', $cookies)
+      response = @http.request(request)
 
-    BBBHelper::debug_http_get_headers(request)
-    BBBHelper::debug_http_response_headers(response)
+      BBBHelper::debug_http_get_headers(request)
+      BBBHelper::debug_http_response_headers(response)
 
-    BBBHelper::p_debug "#{command.args.id} #{response.inspect}"
+      BBBHelper::p_debug "#{id} #{response.inspect}"
 
-    body = response.body.force_encoding('CP1251').encode('UTF-8')
+      body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    BBBHelper::p_dump('doors.html', body)
+      BBBHelper::p_dump('doors.html', body)
 
-    parsed_data = nil
+      parsed_data = nil
 
-    if body_dissect = body.match(/<TR><TD ALIGN=Right rowspan=(\d+)>1.<TD rowspan=\d+><a href=\.\.\/misc\/PersInfo\.asp\?ID=(\d+)>(.*?)<\/a><\/td>(.*)<\/tr><TR><TD ALIGN=Left bgcolor = Silver>/)
+      if body_dissect = body.match(/<TR><TD ALIGN=Right rowspan=(\d+)>1.<TD rowspan=\d+><a href=\.\.\/misc\/PersInfo\.asp\?ID=(\d+)>(.*?)<\/a><\/td>(.*)<\/tr><TR><TD ALIGN=Left bgcolor = Silver>/)
 
-      parsed_data= {}
-      parsed_data[:count] = body_dissect.captures[0].to_i - 1
-      BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
+        parsed_data= {}
+        parsed_data[:count] = body_dissect.captures[0].to_i - 1
+        BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
 
-      parsed_data[:id] = body_dissect.captures[1].to_i
-      BBBHelper.p_debug "Id   = " + parsed_data[:id].to_s
+        parsed_data[:id] = body_dissect.captures[1].to_i
+        BBBHelper.p_debug "Id   = " + parsed_data[:id].to_s
 
-      parsed_data[:name] = body_dissect.captures[2]
-      BBBHelper.p_debug "Name = " + parsed_data[:name]
+        parsed_data[:name] = body_dissect.captures[2]
+        BBBHelper.p_debug "Name = " + parsed_data[:name]
 
-      rawdata = body_dissect.captures[3]
-      BBBHelper.p_debug "Data = #{rawdata.length}B"
+        rawdata = body_dissect.captures[3]
+        BBBHelper.p_debug "Data = #{rawdata.length}B"
 
-      parsed_data[:hours] = rawdata.split('<tr>').map do |line|
-        hours_data = {
-          holiday:        false,
-          date:           nil,
-          hours:          nil,
-          rate:           nil,
-          day_off:        nil,
-          vacation:       nil,
-          unpaid_leave:   nil,
-          sick_leave:     nil,
-          business_trip:  nil,
-          no_control:     nil,
-          comments:       []
-        }
+        parsed_data[:hours] = rawdata.split('<tr>').map do |line|
+          hours_data = {
+            holiday:        false,
+            date:           nil,
+            hours:          nil,
+            rate:           nil,
+            day_off:        nil,
+            vacation:       nil,
+            unpaid_leave:   nil,
+            sick_leave:     nil,
+            business_trip:  nil,
+            no_control:     nil,
+            comments:       []
+          }
 
-        if h = line.scan(/<TD.*?>(.*?)<\/TD>/)
-          hours_data[:holiday] = true if h[0][0].match(/Red/)
-          hours_data[:date]           = h[0][0].gsub(/[^0-9.]+/, '')
-          hours_data[:hours]          = h[1][0].gsub(/[^0-9:]+/, '')
-          hours_data[:rate]           = h[2][0].sub(',', '.').to_f
-          [
-            {index: 3, atom: :day_off},
-            {index: 4, atom: :vacation},
-            {index: 5, atom: :unpaid_leave},
-            {index: 6, atom: :sick_leave},
-            {index: 7, atom: :business_trip},
-            {index: 8, atom: :no_control}
-          ].each do |field|
-            if h[field[:index]][0] != '&nbsp'
-              hours_data[field[:atom]] = true
-              if c = h[field[:index]][0].match(/ALT = "(.*?)"/)
-                hours_data[:comments] << c.captures[0]
+          if h = line.scan(/<TD.*?>(.*?)<\/TD>/)
+            hours_data[:holiday] = true if h[0][0].match(/Red/)
+            hours_data[:date]           = h[0][0].gsub(/[^0-9.]+/, '')
+            hours_data[:hours]          = h[1][0].gsub(/[^0-9:]+/, '')
+            hours_data[:rate]           = h[2][0].sub(',', '.').to_f
+            [
+              {index: 3, atom: :day_off},
+              {index: 4, atom: :vacation},
+              {index: 5, atom: :unpaid_leave},
+              {index: 6, atom: :sick_leave},
+              {index: 7, atom: :business_trip},
+              {index: 8, atom: :no_control}
+            ].each do |field|
+              if h[field[:index]][0] != '&nbsp'
+                hours_data[field[:atom]] = true
+                if c = h[field[:index]][0].match(/ALT = "(.*?)"/)
+                  hours_data[:comments] << c.captures[0]
+                end
               end
             end
           end
+
+          hours_data
         end
-
-        hours_data
       end
+
+      if params[:fill_eta]
+        parsed_data = fill_eta(command, parsed_data)
+        parsed_data.tap { |pd| pd.delete(:hours) }
+      end
+
+      parsed_data
     end
 
-    if params[:fill_eta]
-      parsed_data = fill_eta(command, parsed_data)
-      parsed_data.tap { |pd| pd.delete(:hours) }
-    end
-
-    parsed_data
+    return results
   end
 
   def entries(command, params = {})
-    uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + build_query(STAT::ENTRIES, {
-      :id => command.args.id,
-      :bdate => command.args.from,
-      :edate => command.args.to}))
+    results = command.args.ids.map do |id|
+      uri = URI.join(@options.server + '/' + DOORS_PAGE + '?' + build_query(STAT::ENTRIES, {
+        :id => (id == 0 ? nil : id),
+        :bdate => command.args.from,
+        :edate => command.args.to}))
 
-    request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
-    request.basic_auth(@options.login, @options.password)
-    request.add_field('cookie', $cookies)
-    response = @http.request(request)
+      request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
+      request.basic_auth(@options.login, @options.password)
+      request.add_field('cookie', $cookies)
+      response = @http.request(request)
 
-    BBBHelper::debug_http_get_headers(request)
-    BBBHelper::debug_http_response_headers(response)
+      BBBHelper::debug_http_get_headers(request)
+      BBBHelper::debug_http_response_headers(response)
 
-    BBBHelper::p_debug "#{command.args.id} #{response.inspect}"
+      BBBHelper::p_debug "#{id} #{response.inspect}"
 
-    body = response.body.force_encoding('CP1251').encode('UTF-8')
+      body = response.body.force_encoding('CP1251').encode('UTF-8')
 
-    BBBHelper::p_dump('entries.html', body)
+      BBBHelper::p_dump('entries.html', body)
 
-    parsed_data = nil
+      parsed_data = nil
 
-    if body_dissect = body.match(/<TR><TD ALIGN=Right rowspan=(\d+)>1.<TD rowspan=\d+><a href=\.\.\/misc\/PersInfo\.asp\?ID=(\d+)>(.*?)<\/a><\/td>(.*)<\/tr><\/Table>/)
+      if body_dissect = body.match(/<TR><TD ALIGN=Right rowspan=(\d+)>1.<TD rowspan=\d+><a href=\.\.\/misc\/PersInfo\.asp\?ID=(\d+)>(.*?)<\/a><\/td>(.*)<\/tr><\/Table>/)
 
-      parsed_data= {}
-      parsed_data[:count] = body_dissect.captures[0].to_i
-      BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
+        parsed_data= {}
+        parsed_data[:count] = body_dissect.captures[0].to_i
+        BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
 
-      parsed_data[:id] = body_dissect.captures[1].to_i
-      BBBHelper.p_debug "Id   = " + parsed_data[:id].to_s
+        parsed_data[:id] = body_dissect.captures[1].to_i
+        BBBHelper.p_debug "Id   = " + parsed_data[:id].to_s
 
-      parsed_data[:name] = body_dissect.captures[2]
-      BBBHelper.p_debug "Name = " + parsed_data[:name]
+        parsed_data[:name] = body_dissect.captures[2]
+        BBBHelper.p_debug "Name = " + parsed_data[:name]
 
-      rawdata = body_dissect.captures[3]
-      BBBHelper.p_debug "Data = #{rawdata.length}B"
+        rawdata = body_dissect.captures[3]
+        BBBHelper.p_debug "Data = #{rawdata.length}B"
 
-      parsed_data[:entries] = {}
+        parsed_data[:entries] = {}
 
-      rawdata.split('<tr>').map do |line|
-        if e = line.scan(/<TD.*?>(.*?)<\/TD>/)
-          date_p = e[0][0].split(' ')
-          date_p[0] = '0' + date_p[0] if date_p[0].length == 1
-          date_p[1] = MONTHS[date_p[1]]
+        rawdata.split('<tr>').map do |line|
+          if e = line.scan(/<TD.*?>(.*?)<\/TD>/)
+            date_p = e[0][0].split(' ')
+            date_p[0] = '0' + date_p[0] if date_p[0].length == 1
+            date_p[1] = MONTHS[date_p[1]]
 
-          date = date_p.take(3).join(BBBHelper::SEPARATOR_DATE)
+            date = date_p.take(3).join(BBBHelper::SEPARATOR_DATE)
 
-          parsed_data[:entries][date] = [] unless parsed_data[:entries][date]
+            parsed_data[:entries][date] = [] unless parsed_data[:entries][date]
 
-          pass = {
-            time:      e[1][0].gsub(/[^0-9:]+/, ''),
-            door:      FLOOR_DATA[e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join],
-            direction: nil
-          }
+            pass = {
+              time:      e[1][0].gsub(/[^0-9:]+/, ''),
+              door:      FLOOR_DATA[e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join],
+              direction: nil
+            }
 
-          if e[3][0].include? "Вход"
-            pass[:direction] = :in
-          elsif e[3][0].include? "Выход"
-            pass[:direction] = :out
+            if e[3][0].include? "Вход"
+              pass[:direction] = :in
+            elsif e[3][0].include? "Выход"
+              pass[:direction] = :out
+            end
+
+            parsed_data[:entries][date] << pass
           end
-
-          parsed_data[:entries][date] << pass
         end
       end
-    end
 
-    unless command.args.plain or parsed_data.nil?
-      parsed_data[:pairs] = {}
-      parsed_data[:entries].each do |date,entries|
-        parsed_data[:pairs][date] = []
+      unless command.args.plain or parsed_data.nil?
+        parsed_data[:pairs] = {}
+        parsed_data[:entries].each do |date,entries|
+          parsed_data[:pairs][date] = []
 
-        pair = {
-          floor: nil,
-          in:    {},
-          out:   {}
-        }
+          pair = {
+            floor: nil,
+            in:    {},
+            out:   {}
+          }
 
-        entries.each do |e|
-          if pair[:floor].nil?
-            pair[:floor] = e[:door][:floor]
-            pair[e[:direction]][:time] = e[:time]
-            pair[e[:direction]][:gate] = e[:door][:gate]
-          else
-            if pair[:floor] == e[:door][:floor] # TODO: Implement Unknown door identification if e[:door] is nil
-              if pair[:out].empty? and e[:direction] == :out
-                pair[:out][:time] = e[:time]
-                pair[:out][:gate] = e[:door][:gate]
+          entries.each do |e|
+            if pair[:floor].nil?
+              pair[:floor] = e[:door][:floor]
+              pair[e[:direction]][:time] = e[:time]
+              pair[e[:direction]][:gate] = e[:door][:gate]
+            else
+              if pair[:floor] == e[:door][:floor] # TODO: Implement Unknown door identification if e[:door] is nil
+                if pair[:out].empty? and e[:direction] == :out
+                  pair[:out][:time] = e[:time]
+                  pair[:out][:gate] = e[:door][:gate]
+                else
+                  parsed_data[:pairs][date] << pair
+                  pair = {
+                    floor: nil,
+                    in:    {},
+                    out:   {}
+                  }
+                  pair[:floor] = e[:door][:floor]
+                  pair[e[:direction]][:time] = e[:time]
+                  pair[e[:direction]][:gate] = e[:door][:gate]
+                end
               else
                 parsed_data[:pairs][date] << pair
                 pair = {
@@ -681,41 +698,33 @@ class BBBrute
                   in:    {},
                   out:   {}
                 }
+
                 pair[:floor] = e[:door][:floor]
                 pair[e[:direction]][:time] = e[:time]
                 pair[e[:direction]][:gate] = e[:door][:gate]
               end
-            else
-              parsed_data[:pairs][date] << pair
-              pair = {
-                floor: nil,
-                in:    {},
-                out:   {}
-              }
-
-              pair[:floor] = e[:door][:floor]
-              pair[e[:direction]][:time] = e[:time]
-              pair[e[:direction]][:gate] = e[:door][:gate]
             end
           end
+          parsed_data[:pairs][date] << pair
         end
-        parsed_data[:pairs][date] << pair
-      end
-    end
-
-    if params[:find_last_entry]
-      if parsed_data.nil? or parsed_data[:entries].nil? or parsed_data[:entries].empty?
-        return {error: true, error_msg: :no_entries_detected}
       end
 
-      parsed_data[:last_entry] = parsed_data[:entries].first[1].last
-      parsed_data.tap { |pd| pd.delete(:entries) }
-      parsed_data.tap { |pd| pd.delete(:pairs) }
+      if params[:find_last_entry]
+        if parsed_data.nil? or parsed_data[:entries].nil? or parsed_data[:entries].empty?
+          return {error: true, error_msg: :no_entries_detected}
+        end
+
+        parsed_data[:last_entry] = parsed_data[:entries].first[1].last
+        parsed_data.tap { |pd| pd.delete(:entries) }
+        parsed_data.tap { |pd| pd.delete(:pairs) }
+      end
+
+      parsed_data.tap { |pd| pd.delete(:entries) } if parsed_data and parsed_data[:pairs]
+
+      parsed_data
     end
 
-    parsed_data.tap { |pd| pd.delete(:entries) } if parsed_data[:pairs]
-
-    parsed_data
+    return results
   end
 
   def fill_eta(command, data)
@@ -867,7 +876,7 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_HOURS, MSG_DESCRIPTION_HOURS]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
-          {|s| @command.args.id = find_id(s)}
+          {|s| @command.args.ids = find_ids(s)}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @command.args.from = Date.parse(s)}
@@ -885,7 +894,7 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_ETA, MSG_DESCRIPTION_ETA]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
-          {|s| @command.args.id = find_id(s)}
+          {|s| @command.args.ids = find_ids(s)}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @command.args.from = Date.parse(s)}
@@ -903,7 +912,7 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_ENTRIES, MSG_DESCRIPTION_ENTRIES]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
-          {|s| @command.args.id = find_id(s)}
+          {|s| @command.args.ids = find_ids(s)}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @command.args.from = Date.parse(s)}
@@ -924,7 +933,7 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_LOCATE, MSG_DESCRIPTION_LOCATE]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
-          {|s| @command.args.id = find_id(s)}
+          {|s| @command.args.ids = find_ids(s)}
 
         o.separator ''
       end,
@@ -933,7 +942,7 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_WAIT, MSG_DESCRIPTION_WAIT]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
-          {|s| @command.args.id = find_id(s)}
+          {|s| @command.args.ids = find_ids(s)}
 
         o.on('-w', '--where WHERE', String, MSG_ARGUMENT_WHERE)\
           {|s| @command.args.where = s}
@@ -945,7 +954,7 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_PRESENCE, MSG_DESCRIPTION_PRESENCE]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
-          {|s| @command.args.id = find_id(s)}
+          {|s| @command.args.ids = find_ids(s)}
 
         o.on('-f', '--from DD.MM.YYYY', String, MSG_ARGUMENT_FROM)\
           {|s| @command.args.from = Date.parse(s)}
@@ -960,7 +969,7 @@ class BBBOptions
         o.banner = MSG_COMMAND_PRINTOUT % [CMD_ALIAS, MSG_DESCRIPTION_ALIAS]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ALIAS_ID)\
-          {|s| @command.args.id = find_id(s)}
+          {|s| @command.args.ids = find_ids(s)}
 
         o.on('-a', '--alias ALIAS', String, MSG_ARGUMENT_ALIAS_NAME)\
           {|s| @command.args.alias = s}
@@ -1013,13 +1022,19 @@ class BBBOptions
     raise exception
   end
 
-  def find_id(input)
-    Integer(input)
+  def find_ids(input)
+    input.split(',').map {|s| Integer(s)}
   rescue
     aliases = load_cache[:aliases]
     aliases.select! {|k,v| k.to_s.match /#{input}/}
 
-    return aliases.values.first if aliases.length == 1
+    if aliases.length == 1
+      if aliases.values.first.is_a(Integer)
+        return [aliases.values.first]
+      else
+        return aliases.values.first
+      end
+    end
 
     if aliases.length == 0
       BBBHelper::p_error MSG_ALIAS_NOT_FOUND
@@ -1092,7 +1107,7 @@ class BBBOptions
     case @command.instruction
     when CMD_HOURS, CMD_ETA, CMD_PRESENCE
       @command.args       = OpenStruct.new
-      @command.args.id    = nil
+      @command.args.ids   = [0]
       @command.args.from  = nil
       @command.args.to    = nil
       @command.args.week  = false
@@ -1109,7 +1124,7 @@ class BBBOptions
       end
     when CMD_ENTRIES
       @command.args       = OpenStruct.new
-      @command.args.id    = nil
+      @command.args.ids   = [0]
       @command.args.from  = nil
       @command.args.to    = nil
       @command.args.week  = false
@@ -1127,20 +1142,20 @@ class BBBOptions
       end
     when CMD_LOCATE
       @command.args       = OpenStruct.new
-      @command.args.id    = nil
+      @command.args.ids   = [0]
       @command.args.from  = Date.today
       @command.args.to    = Date.today
       @parsers[@command.instruction].parse!(argv)
     when CMD_WAIT
       @command.args       = OpenStruct.new
-      @command.args.id    = nil
+      @command.args.ids   = [0]
       @command.args.from  = Date.today
       @command.args.to    = Date.today
       @command.args.where = 'in'
       @parsers[@command.instruction].parse!(argv)
     when CMD_ALIAS
       @command.args       = OpenStruct.new
-      @command.args.id    = nil
+      @command.args.ids   = [0]
       @command.args.alias = nil
       @parsers[@command.instruction].parse!(argv)
     when CMD_SAVE,CMD_QUERY,CMD_EXIT
