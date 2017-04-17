@@ -1,13 +1,13 @@
 #!/bin/sh
 
 fonts_to_attach() {
-    find -iname "*.ttf" -exec echo --attach-file "{}" \;
+    find . -iname "*.ttf" -exec echo --attach-file "{}" \;
 }
 
 videos() {
     for extension in mkv avi mp4
     do
-        find -maxdepth 1 -name "*.${extension}" -type f -print
+        find . -maxdepth 1 -name "*.${extension}" -type f -print
     done
 }
 
