@@ -1,6 +1,7 @@
 #!/usr/bin/ruby
 
 require 'yaml'
+require 'json'
 require 'openssl'
 require 'net/http'
 require 'date'
@@ -65,6 +66,14 @@ class BBBHelper
     @debug = value
   end
 
+  def self.machine_friendly?
+    @machine_friendly ||= false
+  end
+
+  def self.machine_friendly=(value)
+    @machine_friendly = value
+  end
+
   def self.debug_http_get_headers(request)
     return unless debug?
 
@@ -93,10 +102,10 @@ class BBBHelper
   end
 
   def self.p_dump(filename, contents)
-    filepath = File.join(Dir.home, '.bbbrute', filename)
+    path = File.join(Dir.home, '.bbbrute', filename)
 
     if debug?
-      File.open(filename, 'w') do |file|
+      File.open(path, 'w') do |file|
         file.write(contents)
       end
     end
@@ -163,6 +172,14 @@ class BBBHelper
       puts MSG_LOCATE_ABSCENT
       exit 0
     end
+
+    if machine_friendly?
+      puts JSON.pretty_generate(data)
+      exit 0
+    end
+
+    p_debug "Priniting data (#{format}):"
+    p_debug data.to_s
 
     case format
     when BBBOptions::CMD_HOURS
@@ -402,11 +419,7 @@ class BBBrute
       BBBHelper::formatted_printout(BBBOptions::CMD_ETA, data)
     when BBBOptions::CMD_ENTRIES
       data = entries(command)
-      if command.machine_friendly
-        data
-      else
-        BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
-      end
+      BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
     when BBBOptions::CMD_LOCATE
       data = entries(command)
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
@@ -1128,6 +1141,8 @@ begin
   command = options.parse_command(argv)
 
   BBBHelper.debug = options.debug
+  BBBHelper.machine_friendly = options.machine_friendly
+
   BBBHelper.p_debug 'Parsed options: ' + options.get_options.to_s
 
   b.execute(command)
