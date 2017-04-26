@@ -47,7 +47,6 @@ class BBBHelper
     out: "Выход"
   }
 
-  MSG_LOCATE_LOCATION = "Местонахождение"
   MSG_LOCATE_ABSCENT  = "Не приходил(а)"
   MSG_LOCATE_FLOOR    = "этаж"
   MSG_LOCATE_OUT      = "Покинул(а) здание"
@@ -251,17 +250,17 @@ class BBBHelper
               end
             end
           when BBBOptions::CMD_LOCATE
-            puts "#{personal_data[:name]} (#{personal_data[:id]})"
+            printf "#{personal_data[:name]} (#{personal_data[:id]})"
 
             entry = personal_data[:last_entry]
 
             if entry[:direction] == :out
-              printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_OUT, entry[:time])
+              printf(": %s (%s)\n", MSG_LOCATE_OUT, entry[:time])
             elsif entry[:direction] == :in
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-                printf("%s: %s (%s)\n", MSG_LOCATE_LOCATION, MSG_LOCATE_ROOF, entry[:time])
+                printf(": %s (%s)\n", MSG_LOCATE_ROOF, entry[:time])
               else
-                printf("%s: %d %s (%s)\n", MSG_LOCATE_LOCATION, entry[:door][:floor], MSG_LOCATE_FLOOR, entry[:time])
+                printf(": %d %s (%s)\n", entry[:door][:floor], MSG_LOCATE_FLOOR, entry[:time])
               end
             end
           when BBBOptions::CMD_ALIAS
