@@ -40,6 +40,18 @@ class String
   def in_light_blue
     colorize(36)
   end
+
+  def in_light_grey
+    colorize(37)
+  end
+
+  def in_light_red
+    colorize(91)
+  end
+
+  def in_light_yellow
+    colorize(93)
+  end
 end
 
 
@@ -110,17 +122,17 @@ class BBBHelper
   def self.debug_http_get_headers(request)
     return unless debug?
 
-    STDERR.puts 'GET Request:'
-    STDERR.puts request.path
-    request.each_header {|key,value| STDERR.puts "| #{key} = #{value}"}
+    STDERR.puts 'GET Request:'.in_light_grey
+    STDERR.puts request.path.in_light_grey
+    request.each_header {|key,value| STDERR.puts "| #{key} = #{value}".in_light_grey}
   end
 
   def self.debug_http_response_headers(response)
     return unless debug?
 
-    STDERR.puts 'Response:'
-    STDERR.puts response.inspect
-    response.header.each_header {|key,value| STDERR.puts "| #{key} = #{value}"}
+    STDERR.puts 'Response:'.in_light_grey
+    STDERR.puts response.inspect.in_light_grey
+    response.header.each_header {|key,value| STDERR.puts "| #{key} = #{value}".in_light_grey}
   end
 
   def self.http_extract_cookies(response)
@@ -147,20 +159,20 @@ class BBBHelper
   def self.p_debug(lines)
     if debug?
       lines.split("\n").each do |line|
-        STDERR.puts "D,#{line}"
+        STDERR.puts "D,#{line}".in_light_grey
       end
     end
   end
 
   def self.p_warning(lines)
     lines.split("\n").each do |line|
-      STDERR.puts "W,#{line}"
+      STDERR.puts "W,#{line}".in_light_yellow
     end
   end
 
   def self.p_error(lines)
     lines.split("\n").each do |line|
-      STDERR.puts "E,#{line}"
+      STDERR.puts "E,#{line}".in_light_red
     end
   end
 
@@ -464,7 +476,7 @@ class BBBrute
         begin
           data = entries(command, {find_last_entry: true})
           last_entry = data.first[:last_entry]
-        rescue Exception => e
+        rescue StandardError => e
           BBBHelper.p_warning e.message
         end
 
@@ -515,7 +527,7 @@ class BBBrute
           query_command = @options.parse_command(input_argv)
           execute(query_command, {query_mode: true})
           printf '> '
-          rescue => exception
+          rescue StandardError => exception
             BBBHelper::p_error exception.to_s
           end
         end
@@ -1048,7 +1060,7 @@ class BBBOptions
     File.open(CONFIG_FILE, mode = 'w') {|f| f.puts(config.to_yaml)}
 
     puts 'Configuration written to the file: ' + CONFIG_FILE
-  rescue => exception
+  rescue StandardError => exception
     BBBHelper.p_error "Unable to write configuration to the file(#{CONFIG_FILE})"
     raise exception
   end
@@ -1203,6 +1215,8 @@ class BBBOptions
 end
 
 begin
+  $stdout.sync = true if $stdout.isatty
+
   options = BBBOptions.new
   argv = options.parse(ARGV)
 
@@ -1217,9 +1231,11 @@ begin
 
   b.execute(command)
 rescue Net::OpenTimeout, Net::ReadTimeout
-  puts 'Server is inaccessible'
+  puts 'Server is inaccessible'.in_red
   exit 10
-rescue => exception
+rescue StandardError => exception
   BBBHelper::p_error exception.to_s
-  raise exception
+rescue Interrupt
+  puts
+  exit 0
 end
