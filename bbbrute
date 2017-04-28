@@ -428,24 +428,34 @@ class BBBrute
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
     when BBBOptions::CMD_WAIT
       date = Date.today.strftime('%d.%m.%Y')
+      last_printed = nil
+
       loop do
         begin
-          data = entries(command).first
+          data = entries(command, {find_last_entry: true})
+          last_entry = data.first[:last_entry]
         rescue Exception => e
           BBBHelper.p_warning e.message
         end
 
-        if data and data[:entries] and data[:entries][date].last
+        last_printed ||= last_entry
+
+        if command.args.continuous
+          unless last_printed == last_entry
+            last_printed = last_entry
+            BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
+          end
+        else
           case command.args.where
           when 'in', 'out'
-            if data[:entries][date].last[:direction].to_s == command.args.where
-              puts data[:entries][date].last
-              exit 0
+            if last_entry[:direction].to_s == command.args.where
+              BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
+              exit 0 unless command.args.continuous
             end
           else
-            if data[:entries][date].last[:direction] == :in and data[:entries][date].last[:door][:floor].to_s == command.args.where
-              puts data[:entries][date].last
-              exit 0
+            if last_entry[:direction] == :in and last_entry[:door][:floor].to_s == command.args.where
+              BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
+              exit 0 unless command.args.continuous
             end
           end
         end
@@ -794,6 +804,7 @@ class BBBOptions
   MSG_ARGUMENT_TO             = 'End of the date range to check (default: today)'
   MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
   MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number'
+  MSG_ARGUMENT_CONTINUOUS     = 'Track continuously'
   MSG_ARGUMENT_PLAIN          = 'Do not use paired printout of linked ins and outs'
   MSG_ARGUMENT_ALIAS_ID       = 'ID to create alias for'
   MSG_ARGUMENT_ALIAS_NAME     = 'Desired alias name'
@@ -933,6 +944,9 @@ class BBBOptions
 
         o.on('-w', '--where WHERE', String, MSG_ARGUMENT_WHERE)\
           {|s| @command.args.where = s}
+
+        o.on('-c', '--[no-]continuous', MSG_ARGUMENT_CONTINUOUS)\
+          {|b| @command.args.continuous = b}
 
         o.separator ''
       end,
@@ -1134,11 +1148,12 @@ class BBBOptions
       @command.args.to    = Date.today
       @parsers[@command.instruction].parse!(argv)
     when CMD_WAIT
-      @command.args       = OpenStruct.new
-      @command.args.ids   = [0]
-      @command.args.from  = Date.today
-      @command.args.to    = Date.today
-      @command.args.where = 'in'
+      @command.args            = OpenStruct.new
+      @command.args.ids        = [0]
+      @command.args.from       = Date.today
+      @command.args.to         = Date.today
+      @command.args.where      = 'in'
+      @command.args.continuous = false
       @parsers[@command.instruction].parse!(argv)
     when CMD_ALIAS
       @command.args       = OpenStruct.new
