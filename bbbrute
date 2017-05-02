@@ -168,20 +168,20 @@ class BBBHelper
 
   def self.p_debug(lines)
     if debug?
-      lines.split("\n").each do |line|
+      lines.to_s.split("\n").each do |line|
         STDERR.puts "D,#{line}".in_light_grey
       end
     end
   end
 
   def self.p_warning(lines)
-    lines.split("\n").each do |line|
+    lines.to_s.split("\n").each do |line|
       STDERR.puts "W,#{line}".in_light_yellow
     end
   end
 
   def self.p_error(lines)
-    lines.split("\n").each do |line|
+    lines.to_s.split("\n").each do |line|
       STDERR.puts "E,#{line}".in_light_red
     end
   end
@@ -236,7 +236,6 @@ class BBBHelper
         else
 
           p_debug "Priniting personal_data (#{format}):"
-          p_debug personal_data.to_s
 
           case format
           when BBBOptions::CMD_HOURS
@@ -642,6 +641,8 @@ class BBBrute
       parsed_data ||= {id: id, error: true, error_msg: :no_data_found}
     end
 
+    BBBHelper::p_debug "Result from doors:"
+    BBBHelper::p_debug results
     return results
   end
 
@@ -773,6 +774,8 @@ class BBBrute
       parsed_data ||= {id: id, error: true, error_msg: :no_data_found}
     end
 
+    BBBHelper::p_debug "Result from entries:"
+    BBBHelper::p_debug results
     return results
   end
 
