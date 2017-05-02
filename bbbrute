@@ -58,7 +58,7 @@ end
 class BBBHelper
   SECONDS_IN_8H = 28800
 
-  MSG_UNKNOWN_PERSON = "Неизвестный пользователь"
+  MSG_UNKNOWN_PERSON = "Неизвестный пользователь (%{id})"
 
   MSG_ETA_PLANNED   = "Запланировано:"
   MSG_ETA_ACTUAL    = "Отработано:"
