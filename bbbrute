@@ -68,8 +68,6 @@ class BBBHelper
   MSG_ETA_FINISHED  = "Отработка была в:"
   MSG_ETA_FINISH    = "Отработка в:"
 
-  MSG_DATA_NO_DATA = "Нет данных"
-
   MSG_HOURS_HOLIDAY       = "Выходной"
   MSG_HOURS_DAY_OFF       = "Отгул"
   MSG_HOURS_VACATION      = "Отпуск"
@@ -79,24 +77,36 @@ class BBBHelper
   MSG_HOURS_NO_CONTROL    = "Снят контроль"
 
 
-  MSG_GATE = {
-    elevator: "Лифт",
-    stairs:   "Лестница",
-    roof:     "Крыша",
-    inner:    "Внутренняя дверь",
-    unknown:  "Неизвестная дверь",
+  MSG_GATE_IN = {
+    elevator: "на лифте",
+    stairs:   "по лестнице",
+    roof:     "с крыши",
+    inner:    "через внутреннюю дверь",
+    unknown:  "через неизвестную дверь",
+    IBM:      "IBM"
+  }
+
+  MSG_GATE_OUT = {
+    elevator: "на лифте",
+    stairs:   "по лестнице",
+    roof:     "на крышу",
+    inner:    "через внутреннюю дверь",
+    unknown:  "через неизвестную дверь",
     IBM:      "IBM"
   }
 
   MSG_DIRECTION = {
-    in:  "Вход",
-    out: "Выход"
+    in:  "вход",
+    out: "выход"
   }
 
-  MSG_LOCATE_ABSCENT  = "Не приходил(а)".in_red
+  MSG_LOCATE_ABSCENT  = "не приходил(а)"
   MSG_LOCATE_FLOOR    = "этаж"
-  MSG_LOCATE_OUT      = "Покинул(а) здание"
-  MSG_LOCATE_ROOF     = "На крыше"
+  MSG_LOCATE_IN       = "на %{floor} этаже"
+  MSG_LOCATE_OUT      = "покинул(а) %{floor} этаж"
+  MSG_LOCATE_ROOF     = "на крыше"
+  MSG_LOCATE_INOUT_C  = " (%{gate} в %{time})"
+  MSG_LOCATE_ROOF_C   = " (выход в %{time})"
 
   SEPARATOR_HOLIDAY  = '/'
   SEPARATOR_TIME     = ':'
@@ -218,11 +228,11 @@ class BBBHelper
     else
       data.each do |personal_data|
 
-        personal_data[:name] ||= MSG_UNKNOWN_PERSON
-        puts "#{personal_data[:name]} (#{personal_data[:id]})".in_blue
+        personal_data[:name] ||= MSG_UNKNOWN_PERSON % { id: personal_data[:id] }
+        puts "#{personal_data[:name]}".in_blue
 
         if personal_data[:error]
-          puts "  " + MSG_LOCATE_ABSCENT
+          puts "  " + MSG_LOCATE_ABSCENT.in_red
         else
 
           p_debug "Priniting personal_data (#{format}):"
@@ -266,21 +276,21 @@ class BBBHelper
             end
           when BBBOptions::CMD_ENTRIES
             if personal_data[:pairs]
-              lg = find_max_length(MSG_GATE.values)
+              lg = find_max_length(MSG_GATE_OUT.values)
               personal_data[:pairs].each do |date, pairs|
                 puts "  " + date.in_yellow
                 pairs.each do |pair|
                   printf("  %d %s:  %#{lg}s  %8s - %8s  %-#{lg}s\n",
                          pair[:floor],
                            MSG_LOCATE_FLOOR,
-                           MSG_GATE[pair[:in][:gate]],
+                           MSG_GATE_IN[pair[:in][:gate]],
                            pair[:in][:time],
                            pair[:out][:time],
-                           MSG_GATE[pair[:out][:gate]])
+                           MSG_GATE_OUT[pair[:out][:gate]])
                 end
               end
             else
-              lg = find_max_length(MSG_GATE.values)
+              lg = find_max_length(MSG_GATE_OUT.values)
               le = find_max_length(MSG_DIRECTION.values)
               personal_data[:entries].each do |date, entries|
                 puts "  " + date.in_yellow
@@ -289,7 +299,7 @@ class BBBHelper
                          entry[:time],
                            entry[:door][:floor],
                            MSG_DIRECTION[entry[:direction]],
-                           MSG_GATE[entry[:door][:gate]])
+                           entry[:direction] == :in ? MSG_GATE_IN[entry[:door][:gate]] : MSG_GATE_OUT[entry[:door][:gate]])
                 end
               end
             end
@@ -297,12 +307,12 @@ class BBBHelper
             entry = personal_data[:last_entry]
 
             if entry[:direction] == :out
-              printf("  %s (%s)\n".in_blue, MSG_LOCATE_OUT, entry[:time])
+              puts "  " + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
             elsif entry[:direction] == :in
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-                printf("  %s (%s)\n".in_green, MSG_LOCATE_ROOF, entry[:time])
+                puts "  " + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
               else
-                printf("  %d %s (%s)\n".in_green, entry[:door][:floor], MSG_LOCATE_FLOOR, entry[:time])
+                puts "  " + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
               end
             end
           when BBBOptions::CMD_ALIAS
