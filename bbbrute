@@ -479,34 +479,38 @@ class BBBrute
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
     when BBBOptions::CMD_WAIT
       date = Date.today.strftime('%d.%m.%Y')
-      last_printed = nil
+      last_printed = {}
 
       loop do
         begin
           data = entries(command, {find_last_entry: true})
-          last_entry = data.first[:last_entry]
         rescue StandardError => e
           BBBHelper.p_warning e.message
         end
 
-        last_printed ||= last_entry
+        data.each do |person_data|
+          id = person_data[:id]
+          last_entry = person_data[:last_entry]
 
-        if command.args.continuous
-          unless last_printed == last_entry
-            last_printed = last_entry
-            BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
-          end
-        else
-          case command.args.where
-          when 'in', 'out'
-            if last_entry[:direction].to_s == command.args.where
-              BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
-              exit 0 unless command.args.continuous
+          last_printed[id] ||= last_entry
+
+          if command.args.continuous
+            unless last_printed[id] == last_entry
+              last_printed[id] = last_entry
+              BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, [person_data])
             end
           else
-            if last_entry[:direction] == :in and last_entry[:door][:floor].to_s == command.args.where
-              BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
-              exit 0 unless command.args.continuous
+            case command.args.where
+            when 'in', 'out'
+              if last_entry[:direction].to_s == command.args.where
+                BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, [person_data])
+                exit 0 unless command.args.continuous
+              end
+            else
+              if last_entry[:direction] == :in and last_entry[:door][:floor].to_s == command.args.where
+                BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, [person_data])
+                exit 0 unless command.args.continuous
+              end
             end
           end
         end
