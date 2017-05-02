@@ -8,8 +8,6 @@ if [ "-t" = "$1" ]; then
     shift && shift
 fi
 
-MESSAGE="$*"
-
 escape_for_osa() {
     echo "$*" | sed 's/"/\\"/g'
 }
@@ -27,7 +25,9 @@ EOS
 
 case `uname` in
     'Darwin')
-        notify_macos "${TITLE}" "${MESSAGE}"
+        while read line; do
+            notify_macos "${TITLE}" "${line}"
+        done
         ;;
     *)
         echo "No handler to notify" >&2
