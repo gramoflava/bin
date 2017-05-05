@@ -227,12 +227,13 @@ class BBBHelper
       puts JSON.pretty_generate(data)
     else
       data.each do |personal_data|
+        message = StringIO.new
 
         personal_data[:name] ||= MSG_UNKNOWN_PERSON % { id: personal_data[:id] }
-        puts "#{personal_data[:name]}".in_blue
+        message.puts "#{personal_data[:name]}".in_blue
 
         if personal_data[:error]
-          puts "  " + MSG_LOCATE_ABSCENT.in_red
+          message.puts "  " + MSG_LOCATE_ABSCENT.in_red
         else
 
           p_debug "Priniting personal_data (#{format}):"
@@ -248,12 +249,12 @@ class BBBHelper
                                           MSG_HOURS_NO_CONTROL])
 
             personal_data[:hours].each do |h|
-              printf("  %10s  %8s  %4.2f  %-#{l}s  %s\n",
-                     h[:date],
-                     h[:hours],
-                     h[:rate],
-                     out_of_office(h),
-                     h[:comments].uniq.join(SEPARATOR_HOLIDAY))
+              message.printf("  %10s  %8s  %4.2f  %-#{l}s  %s\n",
+                             h[:date],
+                             h[:hours],
+                             h[:rate],
+                             out_of_office(h),
+                             h[:comments].uniq.join(SEPARATOR_HOLIDAY))
             end
           when BBBOptions::CMD_ETA
             l = find_max_length([MSG_ETA_PLANNED,
@@ -263,42 +264,42 @@ class BBBHelper
                                  MSG_ETA_REMAINING,
                                  MSG_ETA_FINISHED,
                                  MSG_ETA_FINISH])
-            printf("  %-#{l}s %11s\n", MSG_ETA_PLANNED, seconds_to_timestr(personal_data[:eta][:planned]))
-            printf("  %-#{l}s %11s\n", MSG_ETA_ACTUAL, seconds_to_timestr(personal_data[:eta][:actual]))
-            printf("  %-#{l}s %11s\n", MSG_ETA_TODAY, seconds_to_timestr(personal_data[:eta][:today])) if personal_data[:eta][:today] and personal_data[:eta][:today] != 0
+            message.printf("  %-#{l}s %11s\n", MSG_ETA_PLANNED, seconds_to_timestr(personal_data[:eta][:planned]))
+            message.printf("  %-#{l}s %11s\n", MSG_ETA_ACTUAL, seconds_to_timestr(personal_data[:eta][:actual]))
+            message.printf("  %-#{l}s %11s\n", MSG_ETA_TODAY, seconds_to_timestr(personal_data[:eta][:today])) if personal_data[:eta][:today] and personal_data[:eta][:today] != 0
             if personal_data[:eta][:remaining] < 0
-              printf("  %-#{l}s %11s\n".in_green, MSG_ETA_OVERTIME, seconds_to_timestr(personal_data[:eta][:remaining]))
-              printf("  %-#{l}s %11s\n".in_green, MSG_ETA_FINISHED, seconds_to_timestr(personal_data[:eta][:finish])) if personal_data[:eta][:finish]
+              message.printf("  %-#{l}s %11s\n".in_green, MSG_ETA_OVERTIME, seconds_to_timestr(personal_data[:eta][:remaining]))
+              message.printf("  %-#{l}s %11s\n".in_green, MSG_ETA_FINISHED, seconds_to_timestr(personal_data[:eta][:finish])) if personal_data[:eta][:finish]
             else
-              printf("  %-#{l}s %11s\n".in_red, MSG_ETA_REMAINING, seconds_to_timestr(personal_data[:eta][:remaining]))
-              printf("  %-#{l}s %11s\n".in_red, MSG_ETA_FINISH, seconds_to_timestr(personal_data[:eta][:finish])) if personal_data[:eta][:finish]
+              message.printf("  %-#{l}s %11s\n".in_red, MSG_ETA_REMAINING, seconds_to_timestr(personal_data[:eta][:remaining]))
+              message.printf("  %-#{l}s %11s\n".in_red, MSG_ETA_FINISH, seconds_to_timestr(personal_data[:eta][:finish])) if personal_data[:eta][:finish]
             end
           when BBBOptions::CMD_ENTRIES
             if personal_data[:pairs]
               lg = find_max_length(MSG_GATE_OUT.values)
               personal_data[:pairs].each do |date, pairs|
-                puts "  " + date.in_yellow
+                message.puts "  " + date.in_yellow
                 pairs.each do |pair|
-                  printf("  %d %s:  %#{lg}s  %8s - %8s  %-#{lg}s\n",
-                         pair[:floor],
-                           MSG_LOCATE_FLOOR,
-                           MSG_GATE_IN[pair[:in][:gate]],
-                           pair[:in][:time],
-                           pair[:out][:time],
-                           MSG_GATE_OUT[pair[:out][:gate]])
+                  message.printf("  %d %s:  %#{lg}s  %8s - %8s  %-#{lg}s\n",
+                                 pair[:floor],
+                                 MSG_LOCATE_FLOOR,
+                                 MSG_GATE_IN[pair[:in][:gate]],
+                                 pair[:in][:time],
+                                 pair[:out][:time],
+                                 MSG_GATE_OUT[pair[:out][:gate]])
                 end
               end
             else
               lg = find_max_length(MSG_GATE_OUT.values)
               le = find_max_length(MSG_DIRECTION.values)
               personal_data[:entries].each do |date, entries|
-                puts "  " + date.in_yellow
+                message.puts "  " + date.in_yellow
                 entries.each do |entry|
-                  printf("  %8s  %d  %-#{le}s  %-#{lg}s\n",
-                         entry[:time],
-                           entry[:door][:floor],
-                           MSG_DIRECTION[entry[:direction]],
-                           entry[:direction] == :in ? MSG_GATE_IN[entry[:door][:gate]] : MSG_GATE_OUT[entry[:door][:gate]])
+                  message.printf("  %8s  %d  %-#{le}s  %-#{lg}s\n",
+                                 entry[:time],
+                                 entry[:door][:floor],
+                                 MSG_DIRECTION[entry[:direction]],
+                                 entry[:direction] == :in ? MSG_GATE_IN[entry[:door][:gate]] : MSG_GATE_OUT[entry[:door][:gate]])
                 end
               end
             end
@@ -306,22 +307,24 @@ class BBBHelper
             entry = personal_data[:last_entry]
 
             if entry[:direction] == :out
-              puts "  " + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
+              message.puts "  " + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
             elsif entry[:direction] == :in
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-                puts "  " + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
+                message.puts "  " + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
               else
-                puts "  " + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
+                message.puts "  " + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
               end
             end
           when BBBOptions::CMD_ALIAS
             lk = find_max_length(personal_data.keys)
             lv = find_max_length(personal_data.values.map{|i| i.to_s})
             personal_data.each do |al, id|
-              printf("%-#{lk}s:  %#{lv}s\n", al, id)
+              message.printf("%-#{lk}s:  %#{lv}s\n", al, id)
             end
           end
         end
+
+        puts message.string
       end
     end
   end
