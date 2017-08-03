@@ -2,6 +2,7 @@
 
 TITLE='Yell'
 MESSAGE=''
+SOUND='Purr'
 
 if [ "-t" = "$1" ]; then
     TITLE="$2"
@@ -19,7 +20,8 @@ notify_macos() {
     osascript <<EOS
 set Message to "${message}"
 set Title to "${title}"
-display notification Message with title Title
+set SoundName to "${SOUND}"
+display notification Message with title Title sound name SoundName
 EOS
 }
 
