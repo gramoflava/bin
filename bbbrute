@@ -235,8 +235,7 @@ class BBBHelper
         if personal_data[:error]
           message.puts "  " + MSG_LOCATE_ABSCENT.in_red
         else
-
-          p_debug "Priniting personal_data (#{format}):"
+          p_debug "Printing personal_data (#{format}):"
 
           case format
           when BBBOptions::CMD_HOURS
@@ -315,7 +314,7 @@ class BBBHelper
                 message.puts "  " + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
               end
             end
-          when BBBOptions::CMD_WAIT
+          when BBBOptions::CMD_WATCH
             entry = personal_data[:last_entry]
 
             if entry[:direction] == :out
@@ -333,7 +332,7 @@ class BBBHelper
             lk = find_max_length(personal_data.keys)
             lv = find_max_length(personal_data.values.map{|i| i.to_s})
             personal_data.each do |al, id|
-              message.printf("%-#{lk}s:  %#{lv}s\n", al, id)
+              message.printf("%-#{lk}s:  %#{lv}s\n", al.to_s, id.to_s)
             end
           end
         end
@@ -497,7 +496,7 @@ class BBBrute
     when BBBOptions::CMD_LOCATE
       data = entries(command, {find_last_entry: true})
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
-    when BBBOptions::CMD_WAIT
+    when BBBOptions::CMD_WATCH
       date = Date.today.strftime('%d.%m.%Y')
       last_printed = {}
 
@@ -514,23 +513,21 @@ class BBBrute
 
           last_printed[id] ||= last_entry
 
-          if command.args.continuous
+          case command.args.where
+          when nil
             unless last_printed[id] == last_entry
               last_printed[id] = last_entry
-              BBBHelper::formatted_printout(BBBOptions::CMD_WAIT, [person_data])
+              BBBHelper::formatted_printout(BBBOptions::CMD_WATCH, [person_data])
+            end
+          when 'in', 'out'
+            if last_entry[:direction].to_s == command.args.where
+              BBBHelper::formatted_printout(BBBOptions::CMD_WATCH, [person_data])
+              exit 0
             end
           else
-            case command.args.where
-            when 'in', 'out'
-              if last_entry[:direction].to_s == command.args.where
-                BBBHelper::formatted_printout(BBBOptions::CMD_WAIT, [person_data])
-                exit 0 unless command.args.continuous
-              end
-            else
-              if last_entry[:direction] == :in and last_entry[:door][:floor].to_s == command.args.where
-                BBBHelper::formatted_printout(BBBOptions::CMD_WAIT, [person_data])
-                exit 0 unless command.args.continuous
-              end
+            if last_entry[:direction] == :in and last_entry[:door][:floor].to_s == command.args.where
+              BBBHelper::formatted_printout(BBBOptions::CMD_WATCH, [person_data])
+              exit 0
             end
           end
         end
@@ -851,7 +848,7 @@ class BBBOptions
   CMD_ETA         = 'eta'
   CMD_ENTRIES     = 'entries'
   CMD_LOCATE      = 'locate'
-  CMD_WAIT        = 'wait'
+  CMD_WATCH       = 'watch'
   CMD_PRESENCE    = 'presence'
   CMD_ALIAS       = 'alias'
   CMD_SAVE        = 'save'
@@ -867,7 +864,7 @@ class BBBOptions
   MSG_DESCRIPTION_ETA         = 'Calculated remaining workload for a selected period'
   MSG_DESCRIPTION_ENTRIES     = 'Print all entries by person during a selected period'
   MSG_DESCRIPTION_LOCATE      = 'Find out, where is person now, looking by the last entry'
-  MSG_DESCRIPTION_WAIT        = 'Wait for the next entry of a person'
+  MSG_DESCRIPTION_WATCH       = 'Watch all entries of a person'
   MSG_DESCRIPTION_PRESENCE    = 'List all first and last entries during a selected period'
   MSG_DESCRIPTION_ALIAS       = 'Manage aliases'
   MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
@@ -882,8 +879,7 @@ class BBBOptions
   MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default: today)'
   MSG_ARGUMENT_TO             = 'End of the date range to check (default: today)'
   MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
-  MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number'
-  MSG_ARGUMENT_CONTINUOUS     = 'Track continuously'
+  MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number. If set, exits after first occurence.'
   MSG_ARGUMENT_PLAIN          = 'Do not use paired printout of linked ins and outs'
   MSG_ARGUMENT_ALIAS_ID       = 'ID to create alias for'
   MSG_ARGUMENT_ALIAS_NAME     = 'Desired alias name'
@@ -1015,17 +1011,14 @@ class BBBOptions
         o.separator ''
       end,
 
-      CMD_WAIT => OptionParser.new do |o|
-        o.banner = MSG_COMMAND_PRINTOUT % [CMD_WAIT, MSG_DESCRIPTION_WAIT]
+      CMD_WATCH => OptionParser.new do |o|
+        o.banner = MSG_COMMAND_PRINTOUT % [CMD_WATCH, MSG_DESCRIPTION_WATCH]
 
         o.on('-i', '--id ID', String, MSG_ARGUMENT_ID)\
           {|s| @command.args.ids = find_ids(s)}
 
         o.on('-w', '--where WHERE', String, MSG_ARGUMENT_WHERE)\
           {|s| @command.args.where = s}
-
-        o.on('-c', '--[no-]continuous', MSG_ARGUMENT_CONTINUOUS)\
-          {|b| @command.args.continuous = b}
 
         o.separator ''
       end,
@@ -1226,13 +1219,12 @@ class BBBOptions
       @command.args.from  = Date.today
       @command.args.to    = Date.today
       @parsers[@command.instruction].parse!(argv)
-    when CMD_WAIT
+    when CMD_WATCH
       @command.args            = OpenStruct.new
       @command.args.ids        = [0]
       @command.args.from       = Date.today
       @command.args.to         = Date.today
-      @command.args.where      = 'in'
-      @command.args.continuous = false
+      @command.args.where      = nil
       @parsers[@command.instruction].parse!(argv)
     when CMD_ALIAS
       @command.args       = OpenStruct.new
