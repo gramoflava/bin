@@ -717,9 +717,15 @@ class BBBrute
 
             parsed_data[:entries][date] = [] unless parsed_data[:entries][date]
 
+            door =   FLOOR_DATA[e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join]
+            door ||= {
+              floor: ("0" + e[2][0].scan(/(?<=&nbsp;)(.*?)(?= этаж)/).join).to_i,
+              gate:  :unknown
+            }
+
             pass = {
               time:      e[1][0].gsub(/[^0-9:]+/, ''),
-              door:      FLOOR_DATA[e[2][0].scan(/(?<=&nbsp;)(.*?)(?=&nbsp;)/).join],
+              door:      door,
               direction: nil
             }
 
