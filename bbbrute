@@ -11,8 +11,7 @@ require 'base64'
 require 'pp'
 
 
-class String
-  # add colorization
+module StringColors
   def colorize(color_code)
     if $stdout.isatty
       "\e[#{color_code}m#{self}\e[0m"
@@ -55,58 +54,63 @@ class String
 end
 
 
+class String
+  include StringColors
+end
+
+
 class BBBHelper
   SECONDS_IN_8H = 28800
 
-  MSG_UNKNOWN_PERSON = "Неизвестный пользователь (%{id})"
+  MSG_UNKNOWN_PERSON = 'Неизвестный пользователь (%{id})'
 
-  MSG_ETA_PLANNED   = "Запланировано:"
-  MSG_ETA_ACTUAL    = "Отработано:"
-  MSG_ETA_TODAY     = "За сегодня:"
-  MSG_ETA_OVERTIME  = "Переработано:"
-  MSG_ETA_REMAINING = "Недоработано:"
-  MSG_ETA_FINISHED  = "Отработка была в:"
-  MSG_ETA_FINISH    = "Отработка в:"
+  MSG_ETA_PLANNED   = 'Запланировано:'
+  MSG_ETA_ACTUAL    = 'Отработано:'
+  MSG_ETA_TODAY     = 'За сегодня:'
+  MSG_ETA_OVERTIME  = 'Переработано:'
+  MSG_ETA_REMAINING = 'Недоработано:'
+  MSG_ETA_FINISHED  = 'Отработка была в:'
+  MSG_ETA_FINISH    = 'Отработка в:'
 
-  MSG_HOURS_HOLIDAY       = "Выходной"
-  MSG_HOURS_DAY_OFF       = "Отгул"
-  MSG_HOURS_VACATION      = "Отпуск"
-  MSG_HOURS_UNPAID_LEAVE  = "ОЗС"
-  MSG_HOURS_SICK_LEAVE    = "Больничный"
-  MSG_HOURS_BUSINESS_TRIP = "Командировка"
-  MSG_HOURS_NO_CONTROL    = "Снят контроль"
+  MSG_HOURS_HOLIDAY       = 'Выходной'
+  MSG_HOURS_DAY_OFF       = 'Отгул'
+  MSG_HOURS_VACATION      = 'Отпуск'
+  MSG_HOURS_UNPAID_LEAVE  = 'ОЗС'
+  MSG_HOURS_SICK_LEAVE    = 'Больничный'
+  MSG_HOURS_BUSINESS_TRIP = 'Командировка'
+  MSG_HOURS_NO_CONTROL    = 'Снят контроль'
 
 
   MSG_GATE_IN = {
-    elevator: "на лифте",
-    stairs:   "по лестнице",
-    roof:     "с крыши",
-    inner:    "через внутреннюю дверь",
-    unknown:  "через неизвестную дверь",
-    IBM:      "IBM"
+    elevator: 'на лифте',
+    stairs:   'по лестнице',
+    roof:     'с крыши',
+    inner:    'через внутреннюю дверь',
+    unknown:  'через неизвестную дверь',
+    IBM:      'IBM'
   }
 
   MSG_GATE_OUT = {
-    elevator: "на лифте",
-    stairs:   "по лестнице",
-    roof:     "на крышу",
-    inner:    "через внутреннюю дверь",
-    unknown:  "через неизвестную дверь",
-    IBM:      "IBM"
+    elevator: 'на лифте',
+    stairs:   'по лестнице',
+    roof:     'на крышу',
+    inner:    'через внутреннюю дверь',
+    unknown:  'через неизвестную дверь',
+    IBM:      'IBM'
   }
 
   MSG_DIRECTION = {
-    in:  "вход",
-    out: "выход"
+    in:  'вход',
+    out: 'выход'
   }
 
-  MSG_LOCATE_ABSCENT  = "не приходил(а)"
-  MSG_LOCATE_FLOOR    = "этаж"
-  MSG_LOCATE_IN       = "на %{floor} этаже"
-  MSG_LOCATE_OUT      = "покинул(а) %{floor} этаж"
-  MSG_LOCATE_ROOF     = "на крыше"
-  MSG_LOCATE_INOUT_C  = " (%{gate} в %{time})"
-  MSG_LOCATE_ROOF_C   = " (выход в %{time})"
+  MSG_LOCATE_ABSCENT  = 'не приходил(а)'
+  MSG_LOCATE_FLOOR    = 'этаж'
+  MSG_LOCATE_IN       = 'на %{floor} этаже'
+  MSG_LOCATE_OUT      = 'покинул(а) %{floor} этаж'
+  MSG_LOCATE_ROOF     = 'на крыше'
+  MSG_LOCATE_INOUT_C  = ' (%{gate} в %{time})'
+  MSG_LOCATE_ROOF_C   = ' (выход в %{time})'
 
   SEPARATOR_HOLIDAY  = '/'
   SEPARATOR_TIME     = ':'
@@ -168,20 +172,20 @@ class BBBHelper
 
   def self.p_debug(lines)
     if debug?
-      lines.to_s.split("\n").each do |line|
+      lines.to_s.split(/\n/).each do |line|
         STDERR.puts "D,#{line}".in_light_grey
       end
     end
   end
 
   def self.p_warning(lines)
-    lines.to_s.split("\n").each do |line|
+    lines.to_s.split(/\n/).each do |line|
       STDERR.puts "W,#{line}".in_light_yellow
     end
   end
 
   def self.p_error(lines)
-    lines.to_s.split("\n").each do |line|
+    lines.to_s.split(/\n/).each do |line|
       STDERR.puts "E,#{line}".in_light_red
     end
   end
@@ -207,7 +211,7 @@ class BBBHelper
     minutes = r / 60
     seconds = r % 60
 
-    sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+    sprintf('%02d:%02d:%02d', hours, minutes, seconds)
   end
 
   def self.out_of_office(params)
@@ -230,10 +234,10 @@ class BBBHelper
         message = StringIO.new
 
         personal_data[:name] ||= MSG_UNKNOWN_PERSON % { id: personal_data[:id] }
-        message.puts "#{personal_data[:name]}".in_blue
+        message.puts personal_data[:name].in_blue
 
         if personal_data[:error]
-          message.puts "  " + MSG_LOCATE_ABSCENT.in_red
+          message.puts '  ' + MSG_LOCATE_ABSCENT.in_red
         else
           p_debug "Printing personal_data (#{format}):"
 
@@ -277,7 +281,7 @@ class BBBHelper
             if personal_data[:pairs]
               lg = find_max_length(MSG_GATE_OUT.values)
               personal_data[:pairs].each do |date, pairs|
-                message.puts "  " + date.in_yellow
+                message.puts '  ' + date.in_yellow
                 pairs.each do |pair|
                   message.printf("  %d %s:  %#{lg}s  %8s - %8s  %-#{lg}s\n",
                                  pair[:floor],
@@ -292,7 +296,7 @@ class BBBHelper
               lg = find_max_length(MSG_GATE_OUT.values)
               le = find_max_length(MSG_DIRECTION.values)
               personal_data[:entries].each do |date, entries|
-                message.puts "  " + date.in_yellow
+                message.puts '  ' + date.in_yellow
                 entries.each do |entry|
                   message.printf("  %8s  %d  %-#{le}s  %-#{lg}s\n",
                                  entry[:time],
@@ -306,28 +310,28 @@ class BBBHelper
             entry = personal_data[:last_entry]
 
             if entry[:direction] == :out
-              message.puts "  " + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
+              message.puts '  ' + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
             elsif entry[:direction] == :in
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-                message.puts "  " + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
               else
-                message.puts "  " + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
               end
             end
           when BBBOptions::CMD_WATCH
             entry = personal_data[:last_entry]
 
             if entry[:direction] == :out
-              message.puts "  " + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
+              message.puts '  ' + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
             elsif entry[:direction] == :in
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-                message.puts "  " + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
               else
-                message.puts "  " + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
               end
             end
 
-            message.string.gsub!(/\n+\s*/, ' ') if not $stdout.isatty
+            message.string.gsub!(/\n+\s*/, ' ') unless $stdout.isatty
           when BBBOptions::CMD_ALIAS
             lk = find_max_length(personal_data.keys)
             lv = find_max_length(personal_data.values.map{|i| i.to_s})
@@ -369,25 +373,25 @@ class BBBrute
   end
 
   FLOOR_DATA = {
-    "123"                   => {old:true, place: :filimonava},
-    "407"                   => {old:true, place: :platonava},
-    "2-й этаж, 207 кабинет" => {floor: 2, gate: :inner},
-    "2-й этаж, 212 кабинет" => {floor: 2, gate: :inner},
-    "3-й этаж, 306 кабинет" => {floor: 3, gate: :inner},
-    "3-й этаж, 307 кабинет" => {floor: 3, gate: :inner},
-    "3 этаж, 313 кабинет"   => {floor: 3, gate: :inner},
-    "4-й этаж, лестница"    => {floor: 4, gate: :stairs},
-    "4-й этаж, лифт"        => {floor: 4, gate: :elevator},
-    "5-й этаж, лестница"    => {floor: 5, gate: :stairs},
-    "5-й этаж, лифт"        => {floor: 5, gate: :elevator},
-    "6-й этаж, лестница"    => {floor: 6, gate: :stairs},
-    "6-й этаж, лифт"        => {floor: 6, gate: :elevator},
-    "6-й этаж, IBM"         => {floor: 6, gate: :IBM},
-    "7-й этаж, лестница"    => {floor: 7, gate: :stairs},
-    "8-й этаж, лестница"    => {floor: 8, gate: :stairs},
-    "9 этаж, спортзал"      => {floor: 9, gate: :roof},
-    "9-й этаж, лестница"    => {floor: 9, gate: :stairs},
-    "9-й этаж, лифт"        => {floor: 9, gate: :elevator}
+    '123'                   => {old:true, place: :filimonava},
+    '407'                   => {old:true, place: :platonava},
+    '2-й этаж, 207 кабинет' => {floor: 2, gate: :inner},
+    '2-й этаж, 212 кабинет' => {floor: 2, gate: :inner},
+    '3-й этаж, 306 кабинет' => {floor: 3, gate: :inner},
+    '3-й этаж, 307 кабинет' => {floor: 3, gate: :inner},
+    '3 этаж, 313 кабинет'   => {floor: 3, gate: :inner},
+    '4-й этаж, лестница'    => {floor: 4, gate: :stairs},
+    '4-й этаж, лифт'        => {floor: 4, gate: :elevator},
+    '5-й этаж, лестница'    => {floor: 5, gate: :stairs},
+    '5-й этаж, лифт'        => {floor: 5, gate: :elevator},
+    '6-й этаж, лестница'    => {floor: 6, gate: :stairs},
+    '6-й этаж, лифт'        => {floor: 6, gate: :elevator},
+    '6-й этаж, IBM'         => {floor: 6, gate: :IBM},
+    '7-й этаж, лестница'    => {floor: 7, gate: :stairs},
+    '8-й этаж, лестница'    => {floor: 8, gate: :stairs},
+    '9 этаж, спортзал'      => {floor: 9, gate: :roof},
+    '9-й этаж, лестница'    => {floor: 9, gate: :stairs},
+    '9-й этаж, лифт'        => {floor: 9, gate: :elevator}
   }
 
   MONTHS = {
@@ -432,7 +436,7 @@ class BBBrute
   def do_auth
     load_session
     if test_connection_response != '200'
-      BBBHelper::p_warning "Session expired. Logging in..."
+      BBBHelper::p_warning 'Session expired. Logging in...'
 
       uri = URI.join(@options.server, LOGIN_PAGE)
       request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
@@ -512,7 +516,7 @@ class BBBrute
           id = person_data[:id]
           last_entry = person_data[:last_entry]
 
-          last_printed[id] ||= last_entry
+          last_printed[id] ||= last_entry unless command.args.locate_first
 
           case command.args.where
           when nil
@@ -603,13 +607,13 @@ class BBBrute
 
         parsed_data= {}
         parsed_data[:count] = body_dissect.captures[0].to_i - 1
-        BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
+        BBBHelper.p_debug '#    = ' + parsed_data[:count].to_s
 
         parsed_data[:id] = body_dissect.captures[1].to_i
-        BBBHelper.p_debug "Id   = " + parsed_data[:id].to_s
+        BBBHelper.p_debug 'Id   = ' + parsed_data[:id].to_s
 
         parsed_data[:name] = body_dissect.captures[2]
-        BBBHelper.p_debug "Name = " + parsed_data[:name]
+        BBBHelper.p_debug 'Name = ' + parsed_data[:name]
 
         rawdata = body_dissect.captures[3]
         BBBHelper.p_debug "Data = #{rawdata.length}B"
@@ -663,7 +667,7 @@ class BBBrute
       parsed_data ||= {id: id, error: true, error_msg: :no_data_found}
     end
 
-    BBBHelper::p_debug "Result from doors:"
+    BBBHelper::p_debug 'Result from doors:'
     BBBHelper::p_debug results
     return results
   end
@@ -695,13 +699,13 @@ class BBBrute
 
         parsed_data= {}
         parsed_data[:count] = body_dissect.captures[0].to_i
-        BBBHelper.p_debug "#    = " + parsed_data[:count].to_s
+        BBBHelper.p_debug '#    = ' + parsed_data[:count].to_s
 
         parsed_data[:id] = body_dissect.captures[1].to_i
-        BBBHelper.p_debug "Id   = " + parsed_data[:id].to_s
+        BBBHelper.p_debug 'Id   = ' + parsed_data[:id].to_s
 
         parsed_data[:name] = body_dissect.captures[2]
-        BBBHelper.p_debug "Name = " + parsed_data[:name]
+        BBBHelper.p_debug 'Name = ' + parsed_data[:name]
 
         rawdata = body_dissect.captures[3]
         BBBHelper.p_debug "Data = #{rawdata.length}B"
@@ -730,9 +734,9 @@ class BBBrute
               direction: nil
             }
 
-            if e[3][0].include? "Вход"
+            if e[3][0].include? 'Вход'
               pass[:direction] = :in
-            elsif e[3][0].include? "Выход"
+            elsif e[3][0].include? 'Выход'
               pass[:direction] = :out
             end
 
@@ -887,6 +891,7 @@ class BBBOptions
   MSG_ARGUMENT_TO             = 'End of the date range to check (default: today)'
   MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
   MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number. If set, exits after first occurence.'
+  MSG_ARGUMENT_LOCATE_FIRST   = 'Make initial querry of the location prior tracking (default: true for single user, false for groups)'
   MSG_ARGUMENT_PLAIN          = 'Do not use paired printout of linked ins and outs'
   MSG_ARGUMENT_ALIAS_ID       = 'ID to create alias for'
   MSG_ARGUMENT_ALIAS_NAME     = 'Desired alias name'
@@ -1026,6 +1031,9 @@ class BBBOptions
 
         o.on('-w', '--where WHERE', String, MSG_ARGUMENT_WHERE)\
           {|s| @command.args.where = s}
+
+        o.on('-l', '--locate-first', MSG_ARGUMENT_LOCATE_FIRST)\
+          {|b| @command.args.locate_first = b}
 
         o.separator ''
       end,
@@ -1227,12 +1235,20 @@ class BBBOptions
       @command.args.to    = Date.today
       @parsers[@command.instruction].parse!(argv)
     when CMD_WATCH
-      @command.args            = OpenStruct.new
-      @command.args.ids        = [0]
-      @command.args.from       = Date.today
-      @command.args.to         = Date.today
-      @command.args.where      = nil
+      @command.args              = OpenStruct.new
+      @command.args.ids          = [0]
+      @command.args.from         = Date.today
+      @command.args.to           = Date.today
+      @command.args.where        = nil
+      @command.args.locate_first = nil
       @parsers[@command.instruction].parse!(argv)
+      unless @command.args.locate_first
+        if @command.args.ids.count > 1
+          @command.args.locate_first = false
+        else
+          @command.args.locate_first = true
+        end
+      end
     when CMD_ALIAS
       @command.args       = OpenStruct.new
       @command.args.ids   = [0]
