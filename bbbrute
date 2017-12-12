@@ -587,6 +587,7 @@ class BBBrute
         :bdate => command.args.from,
         :edate => command.args.to}))
 
+      BBBHelper::p_debug "uri='#{uri}'"
       request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
       request.basic_auth(@options.login, @options.password)
       request.add_field('cookie', $cookies)
@@ -679,6 +680,7 @@ class BBBrute
         :bdate => command.args.from,
         :edate => command.args.to}))
 
+      BBBHelper::p_debug "uri='#{uri}'"
       request = Net::HTTP::Get.new(uri.request_uri, {'user-agent' => USERAGENT})
       request.basic_auth(@options.login, @options.password)
       request.add_field('cookie', $cookies)
