@@ -62,7 +62,7 @@ end
 class BBBHelper
   SECONDS_IN_8H = 28800
 
-  MSG_UNKNOWN_PERSON = 'Неизвестный пользователь (%{id})'
+  MSG_UNKNOWN_PERSON = 'Неизвестный пользователь'
 
   MSG_ETA_PLANNED   = 'Запланировано:'
   MSG_ETA_ACTUAL    = 'Отработано:'
@@ -233,8 +233,8 @@ class BBBHelper
       data.each do |personal_data|
         message = StringIO.new
 
-        personal_data[:name] ||= MSG_UNKNOWN_PERSON % { id: personal_data[:id] }
-        message.puts personal_data[:name].in_blue
+        personal_data[:name] ||= MSG_UNKNOWN_PERSON
+        message.puts "#{personal_data[:name]} (#{personal_data[:id]})".in_blue
 
         if personal_data[:error]
           message.puts '  ' + MSG_LOCATE_ABSCENT.in_red
