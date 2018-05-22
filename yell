@@ -3,10 +3,16 @@
 TITLE='Yell'
 MESSAGE=''
 SOUND='Purr'
+SAY_VOICE='yuri'
+SAY_RATE=230
 
-if [ "-t" = "$1" ]; then
+if [ "$1" = "-t" ]; then
     TITLE="$2"
     shift && shift
+fi
+
+if [ "$1" = "-s" -a `uname` = "Darwin" ]; then
+    SAY=true
 fi
 
 escape_for_osa() {
@@ -25,10 +31,25 @@ display notification Message with title Title sound name SoundName
 EOS
 }
 
-case `uname` in
+notify_macos_aloud() {
+    local message="$*"
+
+    echo "${message}" | say -v "${SAY_VOICE}" -r "${SAY_RATE}"
+}
+
+
+HANDLER=`uname`
+[ "${SAY}" = 'true' ] && HANDLER='Say'
+
+case "${HANDLER}" in
     'Darwin')
         while read line; do
             notify_macos "${TITLE}" "${line}"
+        done
+        ;;
+    'Say')
+        while read line; do
+            notify_macos_aloud "${line}"
         done
         ;;
     *)
