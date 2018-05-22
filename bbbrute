@@ -104,10 +104,20 @@ class BBBHelper
     out: 'выход'
   }
 
+  MSG_FLOOR = {
+    2 => 'втором',
+    3 => 'третьем',
+    4 => 'четвёртом',
+    5 => 'пятом',
+    6 => 'шестом',
+    7 => 'седьмом',
+    8 => 'восьмом'
+  }
+
   MSG_LOCATE_ABSCENT  = 'не приходил(а)'
   MSG_LOCATE_FLOOR    = 'этаж'
   MSG_LOCATE_IN       = 'на %{floor} этаже'
-  MSG_LOCATE_OUT      = 'покинул(а) %{floor} этаж'
+  MSG_LOCATE_OUT      = 'покинул %{floor} этаж'
   MSG_LOCATE_ROOF     = 'на крыше'
   MSG_LOCATE_INOUT_C  = ' (%{gate} в %{time})'
   MSG_LOCATE_ROOF_C   = ' (выход в %{time})'
@@ -234,7 +244,7 @@ class BBBHelper
         message = StringIO.new
 
         personal_data[:name] ||= MSG_UNKNOWN_PERSON
-        message.puts "#{personal_data[:name]} (#{personal_data[:id]})".in_blue
+        message.puts "#{personal_data[:name]}".in_blue
 
         if personal_data[:error]
           message.puts '  ' + MSG_LOCATE_ABSCENT.in_red
@@ -315,7 +325,7 @@ class BBBHelper
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
                 message.puts '  ' + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
               else
-                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: MSG_FLOOR[entry[:door][:floor]] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
               end
             end
           when BBBOptions::CMD_WATCH
@@ -327,7 +337,7 @@ class BBBHelper
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
                 message.puts '  ' + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
               else
-                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: MSG_FLOOR[entry[:door][:floor]] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
               end
             end
 
