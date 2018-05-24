@@ -1,4 +1,0 @@
-#!/bin/sh
-
-exec /usr/local/bin/youtube-dl -o "%(title)s-%(id)s.%(ext)s" "$@"
-
