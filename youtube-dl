@@ -1,5 +1,5 @@
 #!/bin/sh
 
 unset http_proxy ftp_proxy auto_proxy no_proxy
-exec /usr/local/bin/youtube-dl -t --prefer-free-formats  "$@"
+exec /usr/local/bin/youtube-dl -o "%(title)s-%(id)s.%(ext)s" --prefer-free-formats "$@"
 
