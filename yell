@@ -23,6 +23,7 @@ notify_macos() {
     local title="$1" && shift
     local message=$(escape_for_osa "$*")
 
+    echo "${message}"
     osascript <<EOS
 set Message to "${message}"
 set Title to "${title}"
@@ -34,6 +35,7 @@ EOS
 notify_macos_aloud() {
     local message="$*"
 
+    echo "${message}"
     echo "${message}" | say -v "${SAY_VOICE}" -r "${SAY_RATE}"
 }
 

@@ -104,14 +104,26 @@ class BBBHelper
     out: 'выход'
   }
 
-  MSG_FLOOR = {
+  MSG_FLOOR_IN = {
     2 => 'втором',
     3 => 'третьем',
     4 => 'четвёртом',
     5 => 'пятом',
     6 => 'шестом',
     7 => 'седьмом',
-    8 => 'восьмом'
+    8 => 'восьмом',
+    9 => 'девятом'
+  }
+
+  MSG_FLOOR_OUT = {
+    2 => 'второй',
+    3 => 'третий',
+    4 => 'четвёртый',
+    5 => 'пятый',
+    6 => 'шестой',
+    7 => 'седьмой',
+    8 => 'восьмой',
+    9 => 'девятый'
   }
 
   MSG_LOCATE_ABSCENT  = 'не приходил(а)'
@@ -320,24 +332,24 @@ class BBBHelper
             entry = personal_data[:last_entry]
 
             if entry[:direction] == :out
-              message.puts '  ' + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
+              message.puts '  ' + MSG_LOCATE_OUT.in_blue % { floor: MSG_FLOOR_OUT[entry[:door][:floor]] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
             elsif entry[:direction] == :in
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
                 message.puts '  ' + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
               else
-                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: MSG_FLOOR[entry[:door][:floor]] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: MSG_FLOOR_IN[entry[:door][:floor]] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
               end
             end
           when BBBOptions::CMD_WATCH
             entry = personal_data[:last_entry]
 
             if entry[:direction] == :out
-              message.puts '  ' + MSG_LOCATE_OUT.in_blue % { floor: entry[:door][:floor] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_OUT[entry[:door][:gate]], time: entry[:time] }
+              message.puts '  ' + MSG_LOCATE_OUT.in_blue % { floor: MSG_FLOOR_OUT[entry[:door][:floor]] }
             elsif entry[:direction] == :in
               if entry[:door][:floor] == 9 and entry[:door][:gate] == :roof
-                message.puts '  ' + MSG_LOCATE_ROOF.in_blue + MSG_LOCATE_INOUT_C.in_light_grey % { time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_ROOF.in_blue
               else
-                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: MSG_FLOOR[entry[:door][:floor]] } + MSG_LOCATE_INOUT_C.in_light_grey % { gate: MSG_GATE_IN[entry[:door][:gate]], time: entry[:time] }
+                message.puts '  ' + MSG_LOCATE_IN.in_green % { floor: MSG_FLOOR_IN[entry[:door][:floor]] }
               end
             end
 
