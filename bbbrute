@@ -147,6 +147,14 @@ class BBBHelper
     @debug = value
   end
 
+  def self.print_ids?
+    @print_ids ||= false
+  end
+
+  def self.print_ids=(value)
+    @print_ids = value
+  end
+
   def self.machine_friendly?
     @machine_friendly ||= false
   end
@@ -256,7 +264,12 @@ class BBBHelper
         message = StringIO.new
 
         personal_data[:name] ||= MSG_UNKNOWN_PERSON
-        message.puts "#{personal_data[:name]}".in_blue
+        personal_data[:id] ||= 0
+        if print_ids?
+          message.puts "#{personal_data[:name]} (#{personal_data[:id]})".in_blue
+        else
+          message.puts "#{personal_data[:name]}".in_blue
+        end
 
         if personal_data[:error]
           message.puts '  ' + MSG_LOCATE_ABSCENT.in_red
@@ -908,6 +921,7 @@ class BBBOptions
   MSG_DESCRIPTION_SAVE        = 'Save entered global options for future use'
   MSG_DESCRIPTION_QUERY       = 'Interactive mode. Usage: COMMAND [ARGS...]'
   MSG_OPTION_HELP             = 'Show help message'
+  MSG_OPTION_PRINT_IDS        = 'Print id along with name'
   MSG_OPTION_DEBUG            = 'Print debug information'
   MSG_OPTION_SERVER           = 'Address of the timesheets server (example: https://example.org)'
   MSG_OPTION_LOGIN            = 'Domain login of the user with access to the timesheets server'
@@ -964,6 +978,9 @@ class BBBOptions
 
         o.on('-h', '--help', MSG_OPTION_HELP)\
           { exec_help_printout }
+
+        o.on('-i', '--[no-]print-ids', MSG_OPTION_PRINT_IDS)\
+          {|b| @options.print_ids = b}
 
         o.on('-d', '--[no-]debug', MSG_OPTION_DEBUG)\
           {|b| @options.debug = b}
@@ -1302,6 +1319,7 @@ begin
   command = options.parse_command(argv)
 
   BBBHelper.debug = options.debug
+  BBBHelper.print_ids = options.print_ids
   BBBHelper.machine_friendly = options.machine_friendly
 
   BBBHelper.p_debug 'Parsed options: ' + options.get_options.to_s
