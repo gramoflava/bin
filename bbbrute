@@ -894,6 +894,8 @@ class BBBOptions
   CONFIG_FILE = File.join(Dir.home, '.bbbrute', 'config.yml')
   CACHE_FILE  = File.join(Dir.home, '.bbbrute', 'cache.yml')
 
+  DAYS_PER_WEEK = 7
+
   CMD_GLOBAL      = ''
   CMD_HOURS       = 'hours'
   CMD_ETA         = 'eta'
@@ -930,7 +932,7 @@ class BBBOptions
   MSG_ARGUMENT_ID             = 'ID or alias of the person to check timesheet for (default: logged user)'
   MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default: today)'
   MSG_ARGUMENT_TO             = 'End of the date range to check (default: today)'
-  MSG_ARGUMENT_WEEK           = 'Calculate full week which includes FROM value'
+  MSG_ARGUMENT_WEEK           = 'Calculate for current week (optionally: N weeks back)'
   MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number. If set, exits after first occurence.'
   MSG_ARGUMENT_LOCATE_FIRST   = 'Make initial querry of the location prior tracking (default: true for single user, false for groups)'
   MSG_ARGUMENT_PLAIN          = 'Do not use paired printout of linked ins and outs'
@@ -1013,8 +1015,8 @@ class BBBOptions
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
           {|s| @command.args.to = Date.parse(s)}
 
-        o.on('-w', '--[no-]week', MSG_ARGUMENT_WEEK)\
-          {|b| @command.args.week = b}
+        o.on('-w', '--[no-]week[=N]', Integer, MSG_ARGUMENT_WEEK)\
+          {|n| @command.args.week = n || 0}
 
         o.separator ''
       end,
@@ -1031,8 +1033,8 @@ class BBBOptions
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
           {|s| @command.args.to = Date.parse(s)}
 
-        o.on('-w', '--[no-]week', MSG_ARGUMENT_WEEK)\
-          {|b| @command.args.week = b}
+        o.on('-w', '--[no-]week[=N]', Integer, MSG_ARGUMENT_WEEK)\
+          {|n| @command.args.week = n || 0}
 
         o.separator ''
       end,
@@ -1049,8 +1051,8 @@ class BBBOptions
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
           {|s| @command.args.to = Date.parse(s)}
 
-        o.on('-w', '--[no-]week', MSG_ARGUMENT_WEEK)\
-          {|b| @command.args.week = b}
+        o.on('-w', '--[no-]week[=N]', Integer, MSG_ARGUMENT_WEEK)\
+          {|n| @command.args.week = n || 0}
 
         o.on('-p', '--[no-]plain', MSG_ARGUMENT_PLAIN)\
           {|b| @command.args.plain = b}
@@ -1247,9 +1249,9 @@ class BBBOptions
       @parsers[@command.instruction].parse!(argv)
 
       if @command.args.week
-        @command.args.from ||= Date.today
-        @command.args.from  = BBBHelper.cwb(@command.args.from)
-        @command.args.to    = BBBHelper.cwe(@command.args.from)
+        @command.args.from = Date.today - @command.args.week * DAYS_PER_WEEK
+        @command.args.from = BBBHelper.cwb(@command.args.from)
+        @command.args.to   = BBBHelper.cwe(@command.args.from)
       else
         @command.args.from ||= Date.today
         @command.args.to   ||= Date.today
@@ -1265,9 +1267,9 @@ class BBBOptions
       @parsers[@command.instruction].parse!(argv)
 
       if @command.args.week
-        @command.args.from ||= Date.today
-        @command.args.from  = BBBHelper.cwb(@command.args.from)
-        @command.args.to    = BBBHelper.cwe(@command.args.from)
+        @command.args.from = Date.today - @command.args.week * DAYS_PER_WEEK
+        @command.args.from = BBBHelper.cwb(@command.args.from)
+        @command.args.to   = BBBHelper.cwe(@command.args.from)
       else
         @command.args.from ||= Date.today
         @command.args.to   ||= Date.today
