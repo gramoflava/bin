@@ -228,6 +228,15 @@ class BBBHelper
     date - date.wday + 7
   end
 
+  def self.cmb(date = Date.today)
+    date - date.day + 1
+  end
+
+  def self.cme(date = Date.today)
+    date = date.next_month
+    date - date.day
+  end
+
   def self.timestr_to_seconds(str)
     timearr = str.split(SEPARATOR_TIME).map {|s| s.to_i}
     timearr[0]*3600 + timearr[1]*60 + timearr[2]
@@ -932,6 +941,7 @@ class BBBOptions
   MSG_ARGUMENT_ID             = 'ID or alias of the person to check timesheet for (default: logged user)'
   MSG_ARGUMENT_FROM           = 'Beginning of the date range to check (default: today)'
   MSG_ARGUMENT_TO             = 'End of the date range to check (default: today)'
+  MSG_ARGUMENT_MONTH          = 'Calculate for current month (optionally: N months back)'
   MSG_ARGUMENT_WEEK           = 'Calculate for current week (optionally: N weeks back)'
   MSG_ARGUMENT_WHERE          = 'Expected location: "in", "out", or floor number. If set, exits after first occurence.'
   MSG_ARGUMENT_LOCATE_FIRST   = 'Make initial querry of the location prior tracking (default: true for single user, false for groups)'
@@ -1015,7 +1025,10 @@ class BBBOptions
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
           {|s| @command.args.to = Date.parse(s)}
 
-        o.on('-w', '--[no-]week[=N]', Integer, MSG_ARGUMENT_WEEK)\
+        o.on('-m', '--month[=N]', Integer, MSG_ARGUMENT_MONTH)\
+          {|n| @command.args.month = n || 0}
+
+        o.on('-w', '--week[=N]', Integer, MSG_ARGUMENT_WEEK)\
           {|n| @command.args.week = n || 0}
 
         o.separator ''
@@ -1033,7 +1046,10 @@ class BBBOptions
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
           {|s| @command.args.to = Date.parse(s)}
 
-        o.on('-w', '--[no-]week[=N]', Integer, MSG_ARGUMENT_WEEK)\
+        o.on('-m', '--month[=N]', Integer, MSG_ARGUMENT_MONTH)\
+          {|n| @command.args.month = n || 0}
+
+        o.on('-w', '--week[=N]', Integer, MSG_ARGUMENT_WEEK)\
           {|n| @command.args.week = n || 0}
 
         o.separator ''
@@ -1051,7 +1067,10 @@ class BBBOptions
         o.on('-t', '--to DD.MM.YYYY', String, MSG_ARGUMENT_TO)\
           {|s| @command.args.to = Date.parse(s)}
 
-        o.on('-w', '--[no-]week[=N]', Integer, MSG_ARGUMENT_WEEK)\
+        o.on('-m', '--month[=N]', Integer, MSG_ARGUMENT_MONTH)\
+          {|n| @command.args.month = n || 0}
+
+        o.on('-w', '--week[=N]', Integer, MSG_ARGUMENT_WEEK)\
           {|n| @command.args.week = n || 0}
 
         o.on('-p', '--[no-]plain', MSG_ARGUMENT_PLAIN)\
@@ -1245,11 +1264,16 @@ class BBBOptions
       @command.args.from  = nil
       @command.args.to    = nil
       @command.args.week  = false
+      @command.args.month = false
 
       @parsers[@command.instruction].parse!(argv)
 
-      if @command.args.week
-        @command.args.from = Date.today - @command.args.week * DAYS_PER_WEEK
+      if @command.args.month
+        @command.args.from = Date.today.prev_month(@command.args.month)
+        @command.args.from = BBBHelper.cmb(@command.args.from)
+        @command.args.to   = BBBHelper.cme(@command.args.from)
+      elsif @command.args.week
+        @command.args.from = Date.today.prev_day(@command.args.week * DAYS_PER_WEEK)
         @command.args.from = BBBHelper.cwb(@command.args.from)
         @command.args.to   = BBBHelper.cwe(@command.args.from)
       else
@@ -1262,12 +1286,17 @@ class BBBOptions
       @command.args.from  = nil
       @command.args.to    = nil
       @command.args.week  = false
+      @command.args.month = false
       @command.args.plain = false
 
       @parsers[@command.instruction].parse!(argv)
 
-      if @command.args.week
-        @command.args.from = Date.today - @command.args.week * DAYS_PER_WEEK
+      if @command.args.month
+        @command.args.from = Date.today.prev_month(@command.args.month)
+        @command.args.from = BBBHelper.cmb(@command.args.from)
+        @command.args.to   = BBBHelper.cme(@command.args.from)
+      elsif @command.args.week
+        @command.args.from = Date.today.prev_day(@command.args.week * DAYS_PER_WEEK)
         @command.args.from = BBBHelper.cwb(@command.args.from)
         @command.args.to   = BBBHelper.cwe(@command.args.from)
       else
