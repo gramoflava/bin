@@ -467,7 +467,6 @@ class BBBrute
     uri = URI(@options.server)
 
     @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE, open_timeout: 3, read_timeout: 120)
-  rescue Exception
   end
 
   def build_query(stat, params)
@@ -509,7 +508,6 @@ class BBBrute
     request.add_field('cookie', $cookies)
     response = @http.request(request)
     response.code
-  rescue Exception
   end
 
   def load_session
@@ -535,7 +533,7 @@ class BBBrute
       exit 0
     end
 
-    #do_auth
+    do_auth
 
     case command.instruction
     when BBBOptions::CMD_HOURS
@@ -1361,8 +1359,8 @@ begin
 rescue Net::OpenTimeout, Net::ReadTimeout
   puts 'Server is inaccessible'.in_red
   exit 10
-#rescue StandardError => exception
-#  BBBHelper::p_error exception.to_s
+rescue StandardError => exception
+  BBBHelper::p_error exception.to_s
 rescue Interrupt
   puts
   exit 0
