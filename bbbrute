@@ -466,6 +466,7 @@ class BBBrute
 
     uri = URI(@options.server)
 
+    OpenSSL::SSL::SSLContext::DEFAULT_PARAMS[:ciphers] += ':DES-CBC3-SHA'
     @http = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', verify_mode: OpenSSL::SSL::VERIFY_NONE, open_timeout: 3, read_timeout: 120)
   end
 
