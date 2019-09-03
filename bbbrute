@@ -1153,8 +1153,6 @@ class BBBOptions
       @options.server   = config[:server]
       @options.login    = config[:login]
       @options.password = Base64.decode64(config[:password])
-
-      BBBHelper.p_debug 'Configuration loaded from the file: ' + CONFIG_FILE
     end
   rescue
     BBBHelper.p_warning 'Unable to load configuration from the file: ' + CONFIG_FILE
@@ -1248,6 +1246,7 @@ class BBBOptions
 
   def parse(argv)
     @parsers[CMD_GLOBAL].order!(argv)
+    BBBHelper.debug = @options.debug
     argv
   end
 
@@ -1361,7 +1360,7 @@ rescue Net::OpenTimeout, Net::ReadTimeout
   puts 'Server is inaccessible'.in_red
   exit 10
 rescue StandardError => exception
-  BBBHelper::p_error exception.to_s
+  BBBHelper::p_error exception.full_message if BBBHelper.debug?
 rescue Interrupt
   puts
   exit 0
