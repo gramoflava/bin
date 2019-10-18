@@ -191,13 +191,9 @@ class BBBHelper
   end
 
   def self.p_dump(filename, contents)
-    path = File.join(Dir.home, '.bbbrute', filename)
+    path = File.join(Dir.home, '.config/bbbrute', filename)
 
-    if debug?
-      File.open(path, 'w') do |file|
-        file.write(contents)
-      end
-    end
+    File.open(path, 'w') {|file| file.write(contents)} if debug?
   end
 
   def self.p_debug(lines)
@@ -406,7 +402,7 @@ end
 
 
 class BBBrute
-  SESSION_FILE = File.join(Dir.home, '.bbbrute/cookies.b64')
+  SESSION_FILE = File.join(Dir.home, '.config/bbbrute', 'cookies.b64')
   WAIT_TIMEOUT = 2
 
   module STAT
@@ -512,8 +508,7 @@ class BBBrute
   end
 
   def load_session
-    f = File.read(SESSION_FILE)
-    $cookies = Base64.decode64(f)
+    $cookies = Base64.decode64(File.read(SESSION_FILE))
     BBBHelper.p_debug 'Session restored from the file: ' + SESSION_FILE
   rescue
     BBBHelper.p_debug 'Unable to restore session from the file: ' + SESSION_FILE
@@ -901,8 +896,8 @@ end
 
 
 class BBBOptions
-  CONFIG_FILE = File.join(Dir.home, '.bbbrute', 'config.yml')
-  CACHE_FILE  = File.join(Dir.home, '.bbbrute', 'cache.yml')
+  CONFIG_FILE = File.join(Dir.home, '.config/bbbrute', 'config.json')
+  CACHE_FILE  = File.join(Dir.home, '.config/bbbrute', 'cache.json')
 
   DAYS_PER_WEEK = 7
 
@@ -964,8 +959,6 @@ class BBBOptions
     @session = OpenStruct.new
     @session.config = nil
 
-    load_config
-    load_session
     setup_parsers
   end
 
@@ -1147,30 +1140,33 @@ class BBBOptions
   end
 
   def load_config
-    File.open(CONFIG_FILE) do |f|
-      config = YAML::load(f)
+    BBBHelper.p_debug 'Config file for reading: ' + CONFIG_FILE
 
-      @options.server   = config[:server]
-      @options.login    = config[:login]
-      @options.password = Base64.decode64(config[:password])
-    end
+    config = JSON.parse(File.read(CONFIG_FILE), :symbolize_names => true)
+
+    BBBHelper.p_debug 'Configuration read: ' + config.to_s
+
+    @options.server   ||= config[:server]
+    @options.login    ||= config[:login]
+    @options.password ||= Base64.decode64(config[:password])
   rescue
     BBBHelper.p_warning 'Unable to load configuration from the file: ' + CONFIG_FILE
   end
 
   def save_config
+    BBBHelper.p_debug 'Config file for writing: ' + CONFIG_FILE
+
     config = {
-      :server => @options.server,
-      :login => @options.login,
-      :password => Base64.encode64(@options.password)
+      server:   @options.server,
+      login:    @options.login,
+      password: Base64.encode64(@options.password)
     }
+    BBBHelper.p_debug 'Configuration to be saved: ' + config.to_s
 
     Dir.mkdir(File.dirname(CONFIG_FILE)) unless Dir.exist?(File.dirname(CONFIG_FILE))
-    File.open(CONFIG_FILE, mode = 'w') {|f| f.puts(config.to_yaml)}
-
-    puts 'Configuration written to the file: ' + CONFIG_FILE
+    File.open(CONFIG_FILE, mode = 'w') {|f| f.puts(JSON.pretty_generate(config))}
   rescue StandardError => exception
-    BBBHelper.p_error "Unable to write configuration to the file(#{CONFIG_FILE})"
+    BBBHelper.p_error 'Unable to write configuration to the file: ' + CONFIG_FILE
     raise exception
   end
 
@@ -1217,7 +1213,7 @@ class BBBOptions
   end
 
   def load_cache(root = nil)
-    File.open(CACHE_FILE) {|f| YAML::load(f)}
+    JSON.parse(File.open(CACHE_FILE))
   rescue
     BBBHelper.p_warning 'Unable to load cache from the file: ' + CACHE_FILE
     {}
@@ -1238,7 +1234,7 @@ class BBBOptions
     end
 
     Dir.mkdir(File.dirname(CACHE_FILE)) unless Dir.exist?(File.dirname(CACHE_FILE))
-    File.open(CACHE_FILE, mode = 'w') {|f| f.puts(cache.to_yaml)}
+    File.open(CACHE_FILE, mode = 'w') {|f| f.puts(JSON.pretty_generate(cache))}
   rescue => exception
     BBBHelper.p_error "Unable to write cache to the file(#{CACHE_FILE})"
     raise exception
@@ -1345,22 +1341,27 @@ begin
   options = BBBOptions.new
   argv = options.parse(ARGV)
 
+  BBBHelper.debug = options.debug
+  BBBHelper.p_debug 'Parsed options: ' + options.to_h.to_s
+
+  options.load_config
+  BBBHelper.p_debug 'Combined options: ' + options.to_h.to_s
+
+  options.load_session
   b = BBBrute.new(options)
 
   command = options.parse_command(argv)
+  BBBHelper.p_debug 'Parsed command: ' + options.get_options.to_s
 
-  BBBHelper.debug = options.debug
   BBBHelper.print_ids = options.print_ids
   BBBHelper.machine_friendly = options.machine_friendly
-
-  BBBHelper.p_debug 'Parsed options: ' + options.get_options.to_s
 
   b.execute(command)
 rescue Net::OpenTimeout, Net::ReadTimeout
   puts 'Server is inaccessible'.in_red
   exit 10
 rescue StandardError => exception
-  BBBHelper::p_error exception.full_message if BBBHelper.debug?
+  BBBHelper::p_error exception.full_message
 rescue Interrupt
   puts
   exit 0
