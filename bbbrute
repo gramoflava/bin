@@ -1212,11 +1212,14 @@ class BBBOptions
     exit 1
   end
 
-  def load_cache(root = nil)
-    JSON.parse(File.open(CACHE_FILE))
+  def load_cache()
+    BBBHelper.p_debug 'Cache file for reading: ' + CACHE_FILE
+    cache = JSON.parse(File.read(CACHE_FILE), :symbolize_names => true)
+    BBBHelper.p_debug 'Cache contents: ' + cache.to_s
+    return cache
   rescue
     BBBHelper.p_warning 'Unable to load cache from the file: ' + CACHE_FILE
-    {}
+    return {}
   end
 
   def to_cache(params)
