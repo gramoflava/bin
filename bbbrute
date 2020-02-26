@@ -1,6 +1,5 @@
 #!/usr/bin/ruby
 
-require 'yaml'
 require 'json'
 require 'openssl'
 require 'net/http'
@@ -1223,7 +1222,7 @@ class BBBOptions
   end
 
   def to_cache(params)
-    cache = load_cache
+    # cache = load_cachex
 
     if params[:aliases]
       cache[:aliases] = {} unless cache[:aliases]
