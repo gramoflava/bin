@@ -1222,7 +1222,7 @@ class BBBOptions
   end
 
   def to_cache(params)
-    # cache = load_cachex
+    cache = load_cache
 
     if params[:aliases]
       cache[:aliases] = {} unless cache[:aliases]
