@@ -533,16 +533,16 @@ class BBBrute
 
     case command.instruction
     when BBBOptions::CMD_HOURS
-      data = doors(command)
+      data = doors(command).sort_by {|item| item[:name] || ""}
       BBBHelper::formatted_printout(BBBOptions::CMD_HOURS, data)
     when BBBOptions::CMD_ETA
-      data = doors(command, {fill_eta: true})
+      data = doors(command, {fill_eta: true}).sort_by {|item| item[:name] || ""}
       BBBHelper::formatted_printout(BBBOptions::CMD_ETA, data)
     when BBBOptions::CMD_ENTRIES
-      data = entries(command)
+      data = entries(command).sort_by {|item| item[:name] || ""}
       BBBHelper::formatted_printout(BBBOptions::CMD_ENTRIES, data)
     when BBBOptions::CMD_LOCATE
-      data = entries(command, {find_last_entry: true})
+      data = entries(command, {find_last_entry: true}).sort_by {|item| item[:name] || ""}
       BBBHelper::formatted_printout(BBBOptions::CMD_LOCATE, data)
     when BBBOptions::CMD_WATCH
       date = Date.today.strftime('%d.%m.%Y')
