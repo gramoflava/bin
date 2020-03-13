@@ -1,5 +1,8 @@
 #!/usr/bin/ruby
 
+# There is a known issue with script only working on macOS since 2019
+# because target server uses very outdated SSL version
+
 require 'yaml'
 require 'json'
 require 'openssl'
