@@ -1367,6 +1367,7 @@ rescue Net::OpenTimeout, Net::ReadTimeout
   exit 10
 rescue StandardError => exception
   BBBHelper::p_error exception.full_message
+  exit 1
 rescue Interrupt
   puts
   exit 0
