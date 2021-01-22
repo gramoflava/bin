@@ -1,0 +1,7 @@
+#!/bin/sh
+
+which -s waifu2x || {
+    echo "No waifu2x found. Try \`brew install imxieyi/waifu2x/waifu2x'";
+    exit 1
+}
+
