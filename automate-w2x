@@ -1,7 +1,47 @@
 #!/bin/sh
 
+# Example for Automator integration as Action
+# export PATH="/usr/local/bin:$PATH"
+# for f in "$@"
+# do
+#     ~/bin/automate-w2x upscale "$f"
+# done
+#
+
 which -s waifu2x || {
     echo "No waifu2x found. Try \`brew install imxieyi/waifu2x/waifu2x'";
     exit 1
 }
+
+set -x
+CMD="$1"
+FILE="$2"
+
+EX="${FILE##*.}"
+FN="${FILE%.*}"
+
+case "$CMD" in
+    upscale)
+        mv $FILE "$FN~.$EX"
+        if [[ "$EX" =~ ^[Jj][Pp][Ee]?[Gg]$ ]]; then
+            waifu2x -t a -s 2 -n 1 -i "$FN~.$EX" -o "$FN.png"
+        else
+            waifu2x -t a -s 2 -n 0 -i "$FN~.$EX" -o "$FN.png"
+        fi
+        ;;
+    clean)
+        mv $FILE "$FN~.$EX"
+        waifu2x -t a -s 1 -n 2 -i "$FN~.$EX" -o "$FN.png"
+        ;;
+    miracle)
+        mv $FILE "$FN~.$EX"
+        waifu2x -t a -s 2 -n 4 -i "$FN~.$EX" -o "$FN.png"
+        ;;
+    photo)
+        mv $FILE "$FN~.$EX"
+        waifu2x -t p -s 2 -n 3 -i "$FN~.$EX" -o "$FN.png"
+        ;;
+    *)
+        echo "Usage: \`automate-w2x [upscale|clean|miracle|photo] IMAGE'"
+esac
 
