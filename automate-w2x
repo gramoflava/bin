@@ -33,7 +33,7 @@ case "$CMD" in
         mv "$FILE" "$FN~.$EX"
         waifu2x -t a -s 1 -n 2 -i "$FN~.$EX" -o "$FN.png"
         ;;
-    miracle)
+    heavy_duty)
         mv "$FILE" "$FN~.$EX"
         waifu2x -t a -s 2 -n 4 -i "$FN~.$EX" -o "$FN.png"
         ;;
@@ -42,6 +42,6 @@ case "$CMD" in
         waifu2x -t p -s 2 -n 3 -i "$FN~.$EX" -o "$FN.png"
         ;;
     *)
-        echo "Usage: \`automate-w2x [upscale|clean|miracle|photo] IMAGE'"
+        echo "Usage: \`automate-w2x [upscale|clean|heavy_duty|photo] IMAGE'"
 esac
 
