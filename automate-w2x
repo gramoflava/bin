@@ -24,9 +24,9 @@ case "$CMD" in
     upscale)
         mv "$FILE" "$FN~.$EX"
         if [[ "$EX" =~ ^[Jj][Pp][Ee]?[Gg]$ ]]; then
-            waifu2x -t a -s 2 -n 1 -i "$FN~.$EX" -o "$FN.png"
+            waifu2x -t a -s 2 -n 2 -i "$FN~.$EX" -o "$FN.png"
         else
-            waifu2x -t a -s 2 -n 0 -i "$FN~.$EX" -o "$FN.png"
+            waifu2x -t a -s 2 -n 1 -i "$FN~.$EX" -o "$FN.png"
         fi
         ;;
     clean)
