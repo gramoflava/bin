@@ -4,9 +4,14 @@
 # export PATH="/usr/local/bin:$PATH"
 # for f in "$@"
 # do
-#     ~/bin/videomeme harmonise "$f"
+#     ~/bin/automate-video harmonise "$f"
 # done
 #
+
+which -s ffmpeg || {
+    echo "No ffmpeg found. Try \`brew install ffmpeg'";
+    exit 1
+}
 
 set -x
 CMD="$1"
@@ -19,7 +24,7 @@ FN="${FILE%.*}"
 case "$CMD" in
     harmonise)
         mv "$FILE" "$FILE.bak"
-        ffmpeg -i "$FILE.bak" -vcodec libx264 -profile:v main -level 3.1 -preset medium -crf 23 -x264-params ref=4 -pix_fmt yuv420p -acodec aac -movflags +faststart -y -max_muxing_queue_size 9999 -y "$FN.harmonising.mp4"
+        ffmpeg -i "$FILE.bak" -vcodec libx264 -profile:v main -level 3.1 -preset medium -crf 23 -x264-params ref=4 -pix_fmt yuv420p -acodec aac -movflags +faststart -max_muxing_queue_size 9999 -y "$FN.harmonising.mp4"
         mv "$FN.harmonising.mp4" "$FN.mp4"
         ;;
     rotate_cw)
@@ -32,7 +37,7 @@ case "$CMD" in
         ffmpeg -i "$FILE.bak" -vf "transpose=3" -y "$FN.rotating.mp4"
         mv "$FN.rotating.mp4" "$FN.mp4"
         ;;
-    widen)
+    wide_putin)
         mv "$FILE" "$FILE.bak"
         DIMENSIONS=`ffprobe -v error -show_entries stream=width,height -of default=noprint_wrappers=1 "$FILE.bak"`
         W=`echo "$DIMENSIONS" | sed -n 's/width=//p'`
