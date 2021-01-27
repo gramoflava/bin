@@ -4,7 +4,7 @@
 # export PATH="/usr/local/bin:$PATH"
 # for f in "$@"
 # do
-#     ~/bin/automate-video harmonise "$f"
+#     ~/bin/automate-vmeme harmonise "$f"
 # done
 #
 
@@ -49,11 +49,14 @@ case "$CMD" in
         sed '1,/EOF/d' $0 | base64 -d | ffmpeg -i "$FILE.bak" -f m4a -i pipe: -vf "scale=${W2}x${H2},setdar=${W2}/${H2},crop=$W:$H2:$W0:0" -map 0:v:0 -map 1:a:0 -shortest -y "$FN.widening.mp4"
         mv "$FN.widening.mp4" "$FN.mp4"
         ;;
+    v+a)
+        ffmpeg -i "$FILE" -i "$FILE2" -map 0:v -c:v libx264 -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FILE.mp4"
+        ;;
     i+a)
         ffmpeg -loop 1 -i "$FILE" -i "$FILE2" -map 0:v -c:v libx264 -tune stillimage -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FILE.mp4"
         ;;
     *)
-        echo "Usage: \`videomeme [harmonise|rotate_cw|rotate_ccw|wide_putin] MOVIE'"
+        echo "Usage: \`automate-vmeme [harmonise|rotate_cw|rotate_ccw|wide_putin|v+a|i+a] MOVIE'"
 esac
 
 exit 0
