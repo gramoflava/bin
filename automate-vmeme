@@ -44,7 +44,7 @@ case "$CMD" in
         ffmpeg -loop 1 -i "$FILE" -i "$FILE2" -map 0:v -c:v libx264 -tune stillimage -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FILE.mp4"
         ;;
     *)
-        echo "Usage: \`automate-vmeme [harmonise|rotate_cw|rotate_ccw|wide_putin|v+a|i+a] MOVIE'"
+        echo "Usage: \`automate-vmeme [refine|rotate_cw|rotate_ccw|wide_putin|v+a|i+a] MOVIE'"
 esac
 
 exit 0
