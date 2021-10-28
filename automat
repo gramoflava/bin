@@ -38,7 +38,7 @@ done
 
 EOT
 }
-set -x
+
 KIND="$1"
 OP="$2"
 
