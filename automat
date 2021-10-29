@@ -26,7 +26,7 @@ usage() {
     depends ffmpeg || echo "$MSG_REQ_FFMPEG" >&2
 
     cat <<EOT
-Usage for images: \`automat -i [upscale|clean|photo] IMAGE [DENOIZE:0-4]'
+Usage for images: \`automat -i [upscale|denoise|photo] IMAGE [DENOISE:0-4]'
 Usage for videos: \`automat -v [refine|cw|ccw|v+a|i+a] MOVIE [ADD-IN]'
 
 Example for Automator integration as Action
@@ -56,18 +56,18 @@ case "$KIND" in
             upscale)
                 source_prep "$SOURCE" "$FN~.$EX"
                 if match_jpeg "$EX"; then
-                    waifu2x -t a -s 2 -n ${DENOIZE:-2} -i "$FN~.$EX" -o "$FN.png"
+                    waifu2x -t a -s 2 -n ${DENOISE:-2} -i "$FN~.$EX" -o "$FN.png"
                 else
-                    waifu2x -t a -s 2 -n ${DENOIZE:-1} -i "$FN~.$EX" -o "$FN.png"
+                    waifu2x -t a -s 2 -n ${DENOISE:-0} -i "$FN~.$EX" -o "$FN.png"
                 fi
                 ;;
-            clean)
+            denoise)
                 source_prep "$SOURCE" "$FN~.$EX"
-                waifu2x -t a -s 1 -n ${DENOIZE:-2} -i "$FN~.$EX" -o "$FN.png"
+                waifu2x -t a -s 1 -n ${DENOISE:-2} -i "$FN~.$EX" -o "$FN.png"
                 ;;
             photo)
                 source_prep "$SOURCE" "$FN~.$EX"
-                waifu2x -t p -s 2 -n ${DENOIZE:-3} -i "$FN~.$EX" -o "$FN.png"
+                waifu2x -t p -s 2 -n ${DENOISE:-3} -i "$FN~.$EX" -o "$FN.png"
                 ;;
             *)
                 usage; exit 1
