@@ -2,8 +2,7 @@
 
 MSG_REQ_W2X="Error. No waifu2x found. Try \`brew install imxieyi/waifu2x/waifu2x' or updating your \$PATH."
 MSG_REQ_FFMPEG="Error. No ffmpeg found. Try \`brew install ffmpeg' or updating your \$PATH."
-MSG_ERR_SOURCE="Error. Source not found:"
-MSG_ERR_ADDIN="Error. ADDIN-in not found:"
+MSG_ERR_NOT_FOUND="Error. Source file not found:"
 
 depends() {
     which -s $1 &>/dev/null
@@ -13,12 +12,8 @@ match_jpeg() {
     [[ "$1" =~ ^[Jj][Pp][Ee]?[Gg]$ ]]
 }
 
-source_prep() {
-    source="$1"
-    target="$2"
-
-    [ -f "$source" ] || { echo "$MSG_ERR_SOURCE" "$source" >&2; exit 1; }
-    mv "$source" "$target" || exit 1
+find_or_die() {
+    [ -f "$1" ] || { echo "$MSG_ERR_NOT_FOUND" "$1" >&2; exit 1; }
 }
 
 usage() {
@@ -26,8 +21,8 @@ usage() {
     depends ffmpeg || echo "$MSG_REQ_FFMPEG" >&2
 
     cat <<EOT
-Usage for images: \`automat -i [upscale|denoise|photo] IMAGE [DENOISE:0-4]'
-Usage for videos: \`automat -v [refine|cw|ccw|v+a|i+a] MOVIE [ADD-IN]'
+Usage for images: \`automat -i [upscale|denoise|photoup] IMAGE [DENOISE:0-4]'
+Usage for videos: \`automat -v [refine|cw|ccw|amv|voice] MOVIE [ADD-IN]'
 
 Example for Automator integration as Action
 export PATH="/usr/local/bin:\$PATH"
@@ -48,26 +43,24 @@ case "$KIND" in
         DENOIZE="$4"
 
         depends waifu2x || { echo "$MSG_REQ_W2X" >&2; exit 1; }
+        find_or_die "$SOURCE"
 
         FN="${SOURCE%.*}"
         EX="${SOURCE##*.}"
 
         case "$OP" in
             upscale)
-                source_prep "$SOURCE" "$FN~.$EX"
                 if match_jpeg "$EX"; then
-                    waifu2x -t a -s 2 -n ${DENOISE:-2} -i "$FN~.$EX" -o "$FN.png"
+                    waifu2x -t a -s 2 -n ${DENOISE:-2} -i "$SOURCE" -o "$FN.upscaled.png"
                 else
-                    waifu2x -t a -s 2 -n ${DENOISE:-0} -i "$FN~.$EX" -o "$FN.png"
+                    waifu2x -t a -s 2 -n ${DENOISE:-0} -i "$SOURCE" -o "$FN.upscaled.png"
                 fi
                 ;;
             denoise)
-                source_prep "$SOURCE" "$FN~.$EX"
-                waifu2x -t a -s 1 -n ${DENOISE:-2} -i "$FN~.$EX" -o "$FN.png"
+                waifu2x -t a -s 1 -n ${DENOISE:-2} -i "$SOURCE" -o "$FN.denoised.png"
                 ;;
-            photo)
-                source_prep "$SOURCE" "$FN~.$EX"
-                waifu2x -t p -s 2 -n ${DENOISE:-3} -i "$FN~.$EX" -o "$FN.png"
+            photoup)
+                waifu2x -t p -s 2 -n ${DENOISE:-3} -i "$SOURCE" -o "$FN.photoupd.png"
                 ;;
             *)
                 usage; exit 1
@@ -78,6 +71,8 @@ case "$KIND" in
         SOURCE="$3"
         ADDIN="$4"
 
+        find_or_die "$SOURCE"
+
         depends ffmpeg || { echo "$MSG_REQ_FFMPEG" >&2; exit 1; }
 
         FN="${SOURCE%.*}"
@@ -85,25 +80,21 @@ case "$KIND" in
 
         case "$OP" in
             refine)
-                source_prep "$SOURCE" "$FN~.$EX"
-                ffmpeg -i "$FN~.$EX" -vcodec libx264 -profile:v main -DENOIZE 3.1 -preset medium -crf 23 -x264-params ref=4 -pix_fmt yuv420p -acodec aac -movflags +faststart -max_muxing_queue_size 9999 -y "$FN.mp4"
+                ffmpeg -i "$SOURCE" -vcodec libx264 -profile:v main -DENOIZE 3.1 -preset medium -crf 23 -x264-params ref=4 -pix_fmt yuv420p -acodec aac -movflags +faststart -max_muxing_queue_size 9999 -y "$FN.refined.mp4"
                 ;;
-            rotate_cw)
-                source_prep "$SOURCE" "$FN~.$EX"
-                ffmpeg -i "$FN~.$EX" -vf "transpose=1" -y "$FN.mp4"
+            cw)
+                ffmpeg -i "$SOURCE" -vf "transpose=1" -y "$FN.cwd.mp4"
                 ;;
-            rotate_ccw)
-                source_prep "$SOURCE" "$FN~.$EX"
-                ffmpeg -i "$FN~.$EX" -vf "transpose=3" -y "$FN.mp4"
+            ccw)
+                ffmpeg -i "$SOURCE" -vf "transpose=3" -y "$FN.ccwd.mp4"
                 ;;
-            v+a)
-                [ -f "$ADDIN" ] || { echo "$MSG_ERR_ADDIN" "$ADDIN" >&2; exit 1; }
-                source_prep "$SOURCE" "$FN~.$EX"
-                ffmpeg -i "$FN~.$EX" -i "$ADDIN" -map 0:v -c:v libx264 -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FN.mp4"
+            amv)
+                find_or_die "$ADDIN"
+                ffmpeg -i "$SOURCE" -i "$ADDIN" -map 0:v -c:v libx264 -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FN.amvd.mp4"
                 ;;
-            i+a)
-                [ -f "$ADDIN" ] || { echo "$MSG_ERR_ADDIN" "$ADDIN" >&2; exit 1; }
-                ffmpeg -i "$SOURCE" -i "$ADDIN" -map 0:v -c:v libx264 -tune stillimage -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FN.mp4"
+            voice)
+                find_or_die "$ADDIN"
+                ffmpeg -i "$SOURCE" -i "$ADDIN" -map 0:v -c:v libx264 -tune stillimage -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FN.voiced.mp4"
                 ;;
             *)
                 usage; exit 1
