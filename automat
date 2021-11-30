@@ -8,8 +8,8 @@ depends() {
     which -s $1 &>/dev/null
 }
 
-match_jpeg() {
-    [[ "$1" =~ ^[Jj][Pp][Ee]?[Gg]$ ]]
+is_png() {
+    [[ "$1" =~ ^[Pp][Nn][Gg]$ ]]
 }
 
 find_or_die() {
@@ -50,17 +50,20 @@ case "$KIND" in
 
         case "$OP" in
             upscale)
-                if match_jpeg "$EX"; then
-                    waifu2x -t a -s 2 -n ${DENOISE:-2} -i "$SOURCE" -o "$FN.upscaled.png"
-                else
+                if is_png "$EX"; then
                     waifu2x -t a -s 2 -n ${DENOISE:-0} -i "$SOURCE" -o "$FN.upscaled.png"
+                else
+                    waifu2x -t a -s 2 -n ${DENOISE:-2} -i "$SOURCE" -o "$FN.upscaled.png"
                 fi
+                sips -s format jpeg "$FN.upscaled.png" --out "$FN.upscaled.jpg" && rm "$FN.upscaled.png"
                 ;;
             denoise)
                 waifu2x -t a -s 1 -n ${DENOISE:-2} -i "$SOURCE" -o "$FN.denoised.png"
+                sips -s format jpeg "$FN.denoised.png" --out "$FN.denoised.jpg" && rm "$FN.denoised.png"
                 ;;
             photoup)
                 waifu2x -t p -s 2 -n ${DENOISE:-3} -i "$SOURCE" -o "$FN.photoupd.png"
+                sips -s format jpeg "$FN.photoupd.png" --out "$FN.photoupd.jpg" && rm "$FN.photoupd.png"
                 ;;
             *)
                 usage; exit 1
