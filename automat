@@ -1,8 +1,9 @@
 #!/bin/sh
 
-MSG_REQ_W2X="Error. No waifu2x found. Try \`brew install imxieyi/waifu2x/waifu2x' or updating your \$PATH."
-MSG_REQ_FFMPEG="Error. No ffmpeg found. Try \`brew install ffmpeg' or updating your \$PATH."
+MSG_REQ_FFMPEG="Error. No 'ffmpeg' found. Try \`brew install ffmpeg' or updating your \$PATH."
 MSG_ERR_NOT_FOUND="Error. Source file not found:"
+
+PRJESR=~/Projects/realesrgan-ncnn-vulkan-20220424-macos
 
 depends() {
     which -s $1 &>/dev/null
@@ -16,12 +17,63 @@ find_or_die() {
     [ -f "$1" ] || { echo "$MSG_ERR_NOT_FOUND" "$1" >&2; exit 1; }
 }
 
+esrgan_art() {
+    # Optimizing art for at least 3072 px in height at original quality,
+    # and store as a jpeg
+
+    local original="$1"
+    local rm_original="$2" # Expects "rm" to remove original after upscaling
+    local name="${original%.*}"
+    local ext="${original##*.}"
+    local target_height=3072 # A chozen image height to optimize
+
+    if [ "$rm_original" != "rm" ]; then
+        rm -f "$name~.$ext"
+        cp "$original" "$name~.$ext"
+    fi
+
+    local height=$(sips -g pixelHeight "$original" | sed -En 's/^.*pixelHeight: *([0-9]+)$/\1/gp')
+
+    local scale_factor=1
+
+    if   [ "$height" -lt $(($target_height/3)) ]; then
+        scale_factor=4
+    elif [ "$height" -lt $(($target_height/2)) ]; then
+        scale_factor=3
+    elif [ "$height" -lt "$target_height" ]; then
+        scale_factor=2
+    fi
+
+    local source="$original"
+    if [ "$scale_factor" -ne 1 ]; then
+        source="$name.esrgan.$(xxd -l2 -ps /dev/urandom).png"
+        "$PRJESR/realesrgan-ncnn-vulkan" \
+            -m "$PRJESR/models" -f png \
+            -i "$original" \
+            -s "$scale_factor" \
+            -o "$source"
+
+        height=$(sips -g pixelHeight "$source" | sed -En 's/^.*pixelHeight: ([0-9]+)$/\1/gp')
+        if [ "$height" -lt "$target_height" ]; then
+            esrgan_art "$source" rm
+        fi
+    fi
+
+    sips "$source" -s format jpeg --resampleHeight "$target_height" --out "$name.h${target_height}.jpg"
+
+    if [ "$rm_original" = "rm" ]; then
+        rm -f "$original"
+    fi
+
+    rm -f "$source"
+    mv "$name.h${target_height}.jpg" "$name.jpg"
+}
+
 usage() {
-    depends waifu2x || echo "$MSG_REQ_W2X" >&2
     depends ffmpeg || echo "$MSG_REQ_FFMPEG" >&2
 
     cat <<EOT
-Usage for images: \`automat -i [upscale|denoise|photoup] IMAGE [DENOISE:0-4]'
+Usage for images: \`automat -i [art] IMAGE'
 Usage for videos: \`automat -v [refine|cw|ccw|amv|voice] MOVIE [ADD-IN]'
 
 Example 1: Simple integration with Automator
@@ -57,28 +109,17 @@ case "$KIND" in
         SOURCE="$3"
         DENOIZE="$4"
 
-        depends waifu2x || { echo "$MSG_REQ_W2X" >&2; exit 1; }
         find_or_die "$SOURCE"
 
         FN="${SOURCE%.*}"
         EX="${SOURCE##*.}"
 
         case "$OP" in
-            upscale)
-                if is_png "$EX"; then
-                    waifu2x -t a -s 2 -n ${DENOISE:-0} -i "$SOURCE" -o "$FN.upscaled.png"
-                else
-                    waifu2x -t a -s 2 -n ${DENOISE:-2} -i "$SOURCE" -o "$FN.upscaled.png"
-                fi
-                sips -s format jpeg "$FN.upscaled.png" --out "$FN.upscaled.jpg" && rm "$FN.upscaled.png"
+            esrgan)
+                esrgan_art "${SOURCE}"
                 ;;
-            denoise)
-                waifu2x -t a -s 1 -n ${DENOISE:-2} -i "$SOURCE" -o "$FN.denoised.png"
-                sips -s format jpeg "$FN.denoised.png" --out "$FN.denoised.jpg" && rm "$FN.denoised.png"
-                ;;
-            photoup)
-                waifu2x -t p -s 2 -n ${DENOISE:-3} -i "$SOURCE" -o "$FN.photoupd.png"
-                sips -s format jpeg "$FN.photoupd.png" --out "$FN.photoupd.jpg" && rm "$FN.photoupd.png"
+            photo)
+                echo "Not yet implemented."
                 ;;
             *)
                 usage; exit 1
