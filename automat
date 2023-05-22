@@ -147,9 +147,13 @@ case "$KIND" in
             ccw)
                 ffmpeg -i "$SOURCE" -vf "transpose=3" -y "$FN.ccwd.mp4"
                 ;;
-            amv)
+            amv) # full length video, loop audio
                 find_or_die "$ADDIN"
-                ffmpeg -i "$SOURCE" -i "$ADDIN" -map 0:v -c:v libx264 -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FN.amvd.mp4"
+                ffmpeg  -i "$SOURCE" -stream_loop -1 -i "$ADDIN" -shortest -map 0:v:0 -c:v libx264 -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -pix_fmt yuv420p -y "$FN.amvd.mp4"
+                ;;
+            amvl) # full length audio, loop video
+                find_or_die "$ADDIN"
+                ffmpeg  -stream_loop -1 -i "$SOURCE" -i "$ADDIN" -shortest -map 0:v:0 -c:v libx264 -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "$FN.amvld.mp4"
                 ;;
             voice)
                 find_or_die "$ADDIN"
