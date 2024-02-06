@@ -1,9 +1,18 @@
 #!/bin/sh
+set -x
+f="$1"
+echo "$1"
+if sips -g hasAlpha "$f" | grep -q "hasAlpha: yes"; then
+   echo moving "$f"
+   mv "$f" ~/Downloads/
+fi
+
+
 
 MSG_REQ_FFMPEG="Error. No 'ffmpeg' found. Try \`brew install ffmpeg' or updating your \$PATH."
 MSG_ERR_NOT_FOUND="Error. Source file not found:"
 
-PRJESR=~/Projects/realesrgan-ncnn-vulkan-20220424-macos
+PRJESR=~/bin/realesrgan-ncnn-vulkan-20220424-macos
 
 depends() {
     which -s $1 &>/dev/null
@@ -30,7 +39,7 @@ esrgan_art() {
     if [ "$rm_original" != "rm" ]; then
         rm -f "$name~.$ext"
         cp "$original" "$name~.$ext"
-    fi
+   fi
 
     local height=$(sips -g pixelHeight "$original" | sed -En 's/^.*pixelHeight: *([0-9]+)$/\1/gp')
 
@@ -38,11 +47,11 @@ esrgan_art() {
 
     if   [ "$height" -lt $(($target_height/3)) ]; then
         scale_factor=4
-    elif [ "$height" -lt $(($target_height/2)) ]; then
+   elif [ "$height" -lt $(($target_height/2)) ]; then
         scale_factor=3
-    elif [ "$height" -lt "$target_height" ]; then
+   elif [ "$height" -lt "$target_height" ]; then
         scale_factor=2
-    fi
+   fi
 
     local source="$original"
     if [ "$scale_factor" -ne 1 ]; then
@@ -56,17 +65,27 @@ esrgan_art() {
         height=$(sips -g pixelHeight "$source" | sed -En 's/^.*pixelHeight: ([0-9]+)$/\1/gp')
         if [ "$height" -lt "$target_height" ]; then
             esrgan_art "$source" rm
-        fi
-    fi
+         fi
+   fi
 
     sips "$source" -s format jpeg --resampleHeight "$target_height" --out "$name.h${target_height}.jpg"
 
     if [ "$rm_original" = "rm" ]; then
         rm -f "$original"
-    fi
+   fi
 
     rm -f "$source"
     mv "$name.h${target_height}.jpg" "$name.jpg"
+}
+
+# normalize by size and convert to jpeg
+normalize_jpg() {
+   local source="$1"
+   height=$(sips -g pixelHeight "$source" | sed -En 's/^.*pixelHeight: ([0-9]+)$/\1/gp')
+   width=$(sips -g pixelWidth "$source" | sed -En 's/^.*pixelWidth: ([0-9]+)$/\1/gp')
+   if sips -g hasAlpha "$f" | grep -q "hasAlpha: no"; then
+       sips
+   fi
 }
 
 usage() {
@@ -81,13 +100,13 @@ Example 1: Simple integration with Automator
 export PATH="/usr/local/bin:\$PATH"
 for f in "\$@"
 do
-    ~/bin/automat -i upscale "\$f" 3
+   ~/bin/automat -i upscale "\$f" 3
 done
 
 Example 2: Request for parameters
 ======
 read -r -d '' applescriptCode <<'EOF'
-   set dialogText to text returned of (display dialog "Deniose level (0-4):" default answer "2")
+   set dialogText to text returned of (display dialog "Denoise level (0-4):" default answer "2")
    return dialogText
 EOF
 DENOISE=\$(osascript -e "\$applescriptCode");
@@ -95,7 +114,7 @@ DENOISE=\$(osascript -e "\$applescriptCode");
 export PATH="/usr/local/bin:\$PATH"
 for f in "\$@"
 do
-    ~/bin/automat -i denoise "\$f" "\$DENOISE"
+   ~/bin/automat -i denoise "\$f" "\$DENOISE"
 done
 
 EOT
@@ -107,7 +126,7 @@ OP="$2"
 case "$KIND" in
     -i)
         SOURCE="$3"
-        DENOIZE="$4"
+        PARAM="$4"
 
         find_or_die "$SOURCE"
 
@@ -117,18 +136,21 @@ case "$KIND" in
         case "$OP" in
             esrgan)
                 esrgan_art "${SOURCE}"
-                ;;
+            ;;
             photo)
                 echo "Not yet implemented."
-                ;;
+            ;;
+            normalize_image)
+                normalize_jpg "${SOURCE}" "${PARAM}"
+            ;;
             *)
                 usage; exit 1
-                ;;
-        esac
-        ;;
+            ;;
+         esac
+   ;;
     -v)
         SOURCE="$3"
-        ADDIN="$4"
+        PARAM="$4"
 
         find_or_die "$SOURCE"
 
@@ -140,31 +162,31 @@ case "$KIND" in
         case "$OP" in
             refine)
                 ffmpeg -i "$SOURCE" -vcodec libx264 -profile:v main -level 3.1 -preset medium -crf 23 -x264-params ref=4 -pix_fmt yuv420p -acodec aac -movflags +faststart -max_muxing_queue_size 9999 -y "$FN.refined.mp4"
-                ;;
+            ;;
             cw)
                 ffmpeg -i "$SOURCE" -vf "transpose=1" -y "$FN.cwd.mp4"
-                ;;
+            ;;
             ccw)
                 ffmpeg -i "$SOURCE" -vf "transpose=3" -y "$FN.ccwd.mp4"
-                ;;
+            ;;
             amv) # full length video, loop audio
-                find_or_die "$ADDIN"
-                ffmpeg  -i "$SOURCE" -stream_loop -1 -i "$ADDIN" -shortest -map 0:v:0 -c:v libx264 -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -pix_fmt yuv420p -y "$FN.amvd.mp4"
-                ;;
+                find_or_die "$PARAM"
+                ffmpeg  -i "$SOURCE" -stream_loop -1 -i "$PARAM" -shortest -map 0:v:0 -c:v libx264 -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -pix_fmt yuv420p -y "$FN.amvd.mp4"
+            ;;
             amvl) # full length audio, loop video
-                find_or_die "$ADDIN"
-                ffmpeg  -stream_loop -1 -i "$SOURCE" -i "$ADDIN" -shortest -map 0:v:0 -c:v libx264 -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "$FN.amvld.mp4"
-                ;;
+                find_or_die "$PARAM"
+                ffmpeg  -stream_loop -1 -i "$SOURCE" -i "$PARAM" -shortest -map 0:v:0 -c:v libx264 -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "$FN.amvld.mp4"
+            ;;
             voice)
-                find_or_die "$ADDIN"
-                ffmpeg -i "$SOURCE" -i "$ADDIN" -map 0:v -c:v libx264 -tune stillimage -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FN.voiced.mp4"
-                ;;
+                find_or_die "$PARAM"
+                ffmpeg -i "$SOURCE" -i "$PARAM" -map 0:v -c:v libx264 -tune stillimage -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FN.voiced.mp4"
+            ;;
             *)
                 usage; exit 1
-                ;;
-        esac
-        ;;
+            ;;
+         esac
+   ;;
     *)
         usage; exit 1
-        ;;
+   ;;
 esac
