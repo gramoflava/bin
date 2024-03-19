@@ -97,24 +97,24 @@ Usage for videos: \`automat -v [refine|cw|ccw|amv|voice] MOVIE [ADD-IN]'
 
 Example 1: Simple integration with Automator
 ======
-export PATH="/usr/local/bin:\$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
 for f in "\$@"
 do
-   ~/bin/automat -i upscale "\$f" 3
+    ~/bin/automat -v refine "\$f"
 done
 
 Example 2: Request for parameters
 ======
 read -r -d '' applescriptCode <<'EOF'
-   set dialogText to text returned of (display dialog "Denoise level (0-4):" default answer "2")
-   return dialogText
+    set dialogText to text returned of (display dialog "Denoise level (0-4):" default answer "2")
+    return dialogText
 EOF
 DENOISE=\$(osascript -e "\$applescriptCode");
 
-export PATH="/usr/local/bin:\$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
 for f in "\$@"
 do
-   ~/bin/automat -i denoise "\$f" "\$DENOISE"
+    ~/bin/automat -i denoise "\$f" "\$DENOISE"
 done
 
 EOT
