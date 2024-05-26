@@ -1,99 +1,89 @@
-#!/bin/sh
-set -x
-f="$1"
-echo "$1"
-if sips -g hasAlpha "$f" | grep -q "hasAlpha: yes"; then
-   echo moving "$f"
-   mv "$f" ~/Downloads/
-fi
-
-
+#!/bin/zsh
+set -e
 
 MSG_REQ_FFMPEG="Error. No 'ffmpeg' found. Try \`brew install ffmpeg' or updating your \$PATH."
 MSG_ERR_NOT_FOUND="Error. Source file not found:"
 
 PRJESR=~/bin/realesrgan-ncnn-vulkan-20220424-macos
 
-depends() {
-    which -s $1 &>/dev/null
+check_dependency() {
+    command -v "$1" &>/dev/null || { echo "$MSG_REQ_FFMPEG" >&2; exit 1; }
 }
 
-is_png() {
-    [[ "$1" =~ ^[Pp][Nn][Gg]$ ]]
+move_alpha_images() {
+    local file="$1"
+    echo "$file"
+    if sips -g hasAlpha "$file" | grep -q "hasAlpha: yes"; then
+        echo "Moving $file to ~/Downloads/"
+        mv "$file" ~/Downloads/
+    fi
 }
 
 find_or_die() {
-    [ -f "$1" ] || { echo "$MSG_ERR_NOT_FOUND" "$1" >&2; exit 1; }
+    [ -f "$1" ] || { echo "$MSG_ERR_NOT_FOUND $1" >&2; exit 1; }
 }
 
-esrgan_art() {
-    # Optimizing art for at least 3072 px in height at original quality,
-    # and store as a jpeg
-
+optimize_image_with_esrgan() {
     local original="$1"
-    local rm_original="$2" # Expects "rm" to remove original after upscaling
+    local remove_original="$2"
     local name="${original%.*}"
     local ext="${original##*.}"
-    local target_height=3072 # A chozen image height to optimize
+    local target_height=3072
 
-    if [ "$rm_original" != "rm" ]; then
-        rm -f "$name~.$ext"
+    if [ "$remove_original" != "rm" ]; then
         cp "$original" "$name~.$ext"
-   fi
+    fi
 
-    local height=$(sips -g pixelHeight "$original" | sed -En 's/^.*pixelHeight: *([0-9]+)$/\1/gp')
-
+    local height
+    height=$(sips -g pixelHeight "$original" | awk '/pixelHeight:/ {print $2}')
     local scale_factor=1
 
-    if   [ "$height" -lt $(($target_height/3)) ]; then
+    if [ "$height" -lt $(($target_height / 3)) ]; then
         scale_factor=4
-   elif [ "$height" -lt $(($target_height/2)) ]; then
+    elif [ "$height" -lt $(($target_height / 2)) ]; then
         scale_factor=3
-   elif [ "$height" -lt "$target_height" ]; then
+    elif [ "$height" -lt "$target_height" ]; then
         scale_factor=2
-   fi
+    fi
 
     local source="$original"
     if [ "$scale_factor" -ne 1 ]; then
         source="$name.esrgan.$(xxd -l2 -ps /dev/urandom).png"
-        "$PRJESR/realesrgan-ncnn-vulkan" \
-            -m "$PRJESR/models" -f png \
-            -i "$original" \
-            -s "$scale_factor" \
-            -o "$source"
+        "$PRJESR/realesrgan-ncnn-vulkan" -m "$PRJESR/models" -f png -i "$original" -s "$scale_factor" -o "$source"
 
-        height=$(sips -g pixelHeight "$source" | sed -En 's/^.*pixelHeight: ([0-9]+)$/\1/gp')
+        height=$(sips -g pixelHeight "$source" | awk '/pixelHeight:/ {print $2}')
         if [ "$height" -lt "$target_height" ]; then
-            esrgan_art "$source" rm
-         fi
-   fi
+            optimize_image_with_esrgan "$source" rm
+        fi
+    fi
 
     sips "$source" -s format jpeg --resampleHeight "$target_height" --out "$name.h${target_height}.jpg"
 
-    if [ "$rm_original" = "rm" ]; then
+    if [ "$remove_original" = "rm" ]; then
         rm -f "$original"
-   fi
+    fi
 
     rm -f "$source"
     mv "$name.h${target_height}.jpg" "$name.jpg"
 }
 
-# normalize by size and convert to jpeg
-normalize_jpg() {
-   local source="$1"
-   height=$(sips -g pixelHeight "$source" | sed -En 's/^.*pixelHeight: ([0-9]+)$/\1/gp')
-   width=$(sips -g pixelWidth "$source" | sed -En 's/^.*pixelWidth: ([0-9]+)$/\1/gp')
-   if sips -g hasAlpha "$f" | grep -q "hasAlpha: no"; then
-       sips
-   fi
+normalize_image() {
+    local source="$1"
+    local height
+    local width
+    height=$(sips -g pixelHeight "$source" | awk '/pixelHeight:/ {print $2}')
+    width=$(sips -g pixelWidth "$source" | awk '/pixelWidth:/ {print $2}')
+    if sips -g hasAlpha "$source" | grep -q "hasAlpha: no"; then
+        sips "$source" -s format jpeg --resampleHeight "$height" --out "${source%.*}.jpg"
+    fi
 }
 
 usage() {
-    depends ffmpeg || echo "$MSG_REQ_FFMPEG" >&2
+    check_dependency ffmpeg
 
     cat <<EOT
-Usage for images: \`automat -i [art] IMAGE'
-Usage for videos: \`automat -v [refine|cw|ccw|amv|voice] MOVIE [ADD-IN]'
+Usage for images: \`automat -i [esrgan|photo|normalize_image] IMAGE'
+Usage for videos: \`automat -v [refine|enhance|loop_audio|combine_audio|add_voice] MOVIE [ADD-IN]'
 
 Example 1: Simple integration with Automator
 ======
@@ -116,77 +106,136 @@ for f in "\$@"
 do
     ~/bin/automat -i denoise "\$f" "\$DENOISE"
 done
-
 EOT
 }
 
-KIND="$1"
-OP="$2"
+refine_video() {
+    local source="$1"
+    
+    # Get the current bitrate of the input video
+    local bitrate
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source")
 
-case "$KIND" in
-    -i)
-        SOURCE="$3"
-        PARAM="$4"
+    # If bitrate is not found, set a default value (e.g., 1.5Mbps)
+    if [ -z "$bitrate" ]; then
+        bitrate=1500000
+    fi
 
-        find_or_die "$SOURCE"
+    # Re-encode the video using H.264 codec with hardware acceleration
+    ffmpeg -i "$source" \
+        -vcodec h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize "$((bitrate/2))" \
+        -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -pix_fmt yuv420p \
+        -acodec aac -b:a 128k -movflags +faststart \
+        -y "${source%.*}.refined.mp4"
+}
 
-        FN="${SOURCE%.*}"
-        EX="${SOURCE##*.}"
 
-        case "$OP" in
-            esrgan)
-                esrgan_art "${SOURCE}"
-            ;;
-            photo)
-                echo "Not yet implemented."
-            ;;
-            normalize_image)
-                normalize_jpg "${SOURCE}" "${PARAM}"
-            ;;
-            *)
-                usage; exit 1
-            ;;
-         esac
-   ;;
-    -v)
-        SOURCE="$3"
-        PARAM="$4"
+enhance_video() {
+    local source="$1"
+    local param="$2"
+    find_or_die "$param"
+    # Get the current bitrate of the input video
+    local bitrate
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source")
 
-        find_or_die "$SOURCE"
+    # If bitrate is not found, set a default value (e.g., 1.5Mbps)
+    if [ -z "$bitrate" ]; then
+        bitrate=1500000
+    fi
 
-        depends ffmpeg || { echo "$MSG_REQ_FFMPEG" >&2; exit 1; }
+    ffmpeg -i "$source" -stream_loop -1 -i "$param" -shortest -map 0:v:0 -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize "$((bitrate/2))" -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "${source%.*}.enhanced.mp4"
+}
 
-        FN="${SOURCE%.*}"
-        EX="${SOURCE##*.}"
+loop_audio() {
+    local source="$1"
+    local param="$2"
+    find_or_die "$param"
+    # Get the current bitrate of the input video
+    local bitrate
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source")
 
-        case "$OP" in
-            refine)
-                ffmpeg -i "$SOURCE" -vcodec libx264 -profile:v main -level 3.1 -preset medium -crf 23 -x264-params ref=4 -pix_fmt yuv420p -acodec aac -movflags +faststart -max_muxing_queue_size 9999 -y "$FN.refined.mp4"
-            ;;
-            cw)
-                ffmpeg -i "$SOURCE" -vf "transpose=1" -y "$FN.cwd.mp4"
-            ;;
-            ccw)
-                ffmpeg -i "$SOURCE" -vf "transpose=3" -y "$FN.ccwd.mp4"
-            ;;
-            amv) # full length video, loop audio
-                find_or_die "$PARAM"
-                ffmpeg  -i "$SOURCE" -stream_loop -1 -i "$PARAM" -shortest -map 0:v:0 -c:v libx264 -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -pix_fmt yuv420p -y "$FN.amvd.mp4"
-            ;;
-            amvl) # full length audio, loop video
-                find_or_die "$PARAM"
-                ffmpeg  -stream_loop -1 -i "$SOURCE" -i "$PARAM" -shortest -map 0:v:0 -c:v libx264 -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "$FN.amvld.mp4"
-            ;;
-            voice)
-                find_or_die "$PARAM"
-                ffmpeg -i "$SOURCE" -i "$PARAM" -map 0:v -c:v libx264 -tune stillimage -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "$FN.voiced.mp4"
-            ;;
-            *)
-                usage; exit 1
-            ;;
-         esac
-   ;;
-    *)
-        usage; exit 1
-   ;;
-esac
+    # If bitrate is not found, set a default value (e.g., 1.5Mbps)
+    if [ -z "$bitrate" ]; then
+        bitrate=1500000
+    fi
+
+    ffmpeg -stream_loop -1 -i "$source" -i "$param" -shortest -map 0:v:0 -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize "$((bitrate/2))" -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "${source%.*}.audio_looped.mp4"
+}
+
+combine_audio() {
+    local source="$1"
+    local param="$2"
+    find_or_die "$param"
+    # Get the current bitrate of the input video
+    local bitrate
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source")
+
+    # If bitrate is not found, set a default value (e.g., 1.5Mbps)
+    if [ -z "$bitrate" ]; then
+        bitrate=1500000
+    fi
+
+    ffmpeg -i "$source" -i "$param" -map 0:v -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize "$((bitrate/2))" -tune stillimage -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "${source%.*}.combined_audio.mp4"
+}
+
+main() {
+    local kind="$1"
+    local op="$2"
+
+    case "$kind" in
+        -i)
+            local source="$3"
+            local param="$4"
+
+            find_or_die "$source"
+
+            case "$op" in
+                esrgan)
+                    optimize_image_with_esrgan "$source"
+                ;;
+                photo)
+                    echo "Not yet implemented."
+                ;;
+                normalize_image)
+                    normalize_image "$source" "$param"
+                ;;
+                *)
+                    usage; exit 1
+                ;;
+            esac
+        ;;
+        -v)
+            local source="$3"
+            local param="$4"
+
+            find_or_die "$source"
+            check_dependency ffmpeg
+
+            case "$op" in
+                refine)
+                    refine_video "$source"
+                ;;
+                enhance)
+                    enhance_video "$source" "$param"
+                ;;
+                loop_audio)
+                    loop_audio "$source" "$param"
+                ;;
+                combine_audio)
+                    combine_audio "$source" "$param"
+                ;;
+                add_voice)
+                    combine_audio "$source" "$param"
+                ;;
+                *)
+                    usage; exit 1
+                ;;
+            esac
+        ;;
+        *)
+            usage; exit 1
+        ;;
+    esac
+}
+
+main "$@"
