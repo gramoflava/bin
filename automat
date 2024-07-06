@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -e
 
-MSG_REQ_FFMPEG="Error. No 'ffmpeg' found. Try \`brew install ffmpeg' or updating your \$PATH."
+MSG_REQ_FFMPEG="Error. No 'ffmpeg' found. Try \`brew install ffmpeg\` or updating your \$PATH."
 MSG_ERR_NOT_FOUND="Error. Source file not found:"
 
 PRJESR=~/bin/realesrgan-ncnn-vulkan-20220424-macos
@@ -19,7 +19,7 @@ refine_video() {
     
     # Get the current bitrate of the input video
     local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source")
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source" | grep -o '[0-9]\+')
 
     # If bitrate is not found, set a default value (e.g., 1.5Mbps)
     if [ -z "$bitrate" ]; then
@@ -28,7 +28,7 @@ refine_video() {
 
     # Re-encode the video using H.264 codec with hardware acceleration
     ffmpeg -i "$source" \
-        -vcodec h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize "$((bitrate/2))" \
+        -vcodec h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize $((bitrate / 2)) \
         -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -pix_fmt yuv420p \
         -acodec aac -b:a 128k -movflags +faststart \
         -y "${source%.*}.refined.mp4"
@@ -38,9 +38,10 @@ enhance_video() {
     local source="$1"
     local param="$2"
     find_or_die "$param"
+    
     # Get the current bitrate of the input video
     local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source")
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source" | grep -o '[0-9]\+')
 
     # If bitrate is not found, set a default value (e.g., 1.5Mbps)
     if [ -z "$bitrate" ]; then
@@ -49,7 +50,7 @@ enhance_video() {
 
     ffmpeg -i "$source" \
         -stream_loop -1 -i "$param" -shortest -map 0:v:0 \
-        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize "$((bitrate/2))" \
+        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize $((bitrate / 2)) \
         -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "${source%.*}.enhanced.mp4"
 }
 
@@ -57,9 +58,10 @@ loop_audio() {
     local source="$1"
     local param="$2"
     find_or_die "$param"
+    
     # Get the current bitrate of the input video
     local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source")
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source" | grep -o '[0-9]\+')
 
     # If bitrate is not found, set a default value (e.g., 1.5Mbps)
     if [ -z "$bitrate" ]; then
@@ -67,7 +69,7 @@ loop_audio() {
     fi
 
     ffmpeg -stream_loop -1 -i "$source" -i "$param" -shortest -map 0:v:0 \
-        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize "$((bitrate/2))" \
+        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize $((bitrate / 2)) \
         -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "${source%.*}.audio_looped.mp4"
 }
 
@@ -75,9 +77,10 @@ combine_audio() {
     local source="$1"
     local param="$2"
     find_or_die "$param"
+    
     # Get the current bitrate of the input video
     local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source")
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source" | grep -o '[0-9]\+')
 
     # If bitrate is not found, set a default value (e.g., 1.5Mbps)
     if [ -z "$bitrate" ]; then
@@ -85,7 +88,7 @@ combine_audio() {
     fi
 
     ffmpeg -i "$source" -i "$param" -map 0:v \
-        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize "$((bitrate/2))" -tune stillimage \
+        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize $((bitrate / 2)) -tune stillimage \
         -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "${source%.*}.combined_audio.mp4"
 }
 
