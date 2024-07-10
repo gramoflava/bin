@@ -163,7 +163,7 @@ process_video() {
     log "INFO" "Executing FFmpeg command: $ffmpeg_command"
 
     # Execute FFmpeg command and capture output
-    if ! eval "$ffmpeg_command" > >(tee -a "$log_file") 2>&1; then
+    if ! eval "$ffmpeg_command" >> "$log_file" 2>&1; then
         display_error "FFmpeg command failed. Check log file for details."
         exit 1
     fi
