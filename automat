@@ -4,14 +4,36 @@ set -e
 MSG_REQ_FFMPEG="Error. No 'ffmpeg' found. Try \`brew install ffmpeg\` or updating your \$PATH."
 MSG_ERR_NOT_FOUND="Error. Source file not found:"
 
-PRJESR=~/bin/realesrgan-ncnn-vulkan-20220424-macos
+log_file=""
+
+log() {
+    local level="$1"
+    local message="$2"
+    local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+    
+    # Ensure the directory for the log file exists
+    mkdir -p "$(dirname "$log_file")"
+    
+    # Create the log file if it doesn't exist
+    touch "$log_file"
+    
+    echo "[$timestamp] [$level] $message" >> "$log_file"
+}
 
 check_dependency() {
-    command -v "$1" &>/dev/null || { echo "$MSG_REQ_FFMPEG" >&2; exit 1; }
+    if ! command -v "$1" &>/dev/null; then
+        [ -n "$log_file" ] && log "ERROR" "Dependency not found: $1"
+        echo "$MSG_REQ_FFMPEG" >&2
+        exit 1
+    fi
 }
 
 find_or_die() {
-    [ -f "$1" ] || { echo "$MSG_ERR_NOT_FOUND $1" >&2; exit 1; }
+    if [ ! -f "$1" ]; then
+        [ -n "$log_file" ] && log "ERROR" "Source file not found: $1"
+        echo "$MSG_ERR_NOT_FOUND $1" >&2
+        exit 1
+    fi
 }
 
 refine_video() {
@@ -136,8 +158,14 @@ main() {
             local source="$3"
             local param="$4"
 
+            # Set up logging first
+            log_file="${source%.*}.log"
+
             find_or_die "$source"
             check_dependency ffmpeg
+            check_dependency jq
+
+            log "INFO" "Starting script execution for $op operation on $source"
 
             case "$op" in
                 refine)
@@ -152,16 +180,19 @@ main() {
                 combine_audio)
                     combine_audio "$source" "$param"
                 ;;
-                add_voice)
-                    combine_audio "$source" "$param"
-                ;;
                 *)
-                    usage; exit 1
+                    log "ERROR" "Invalid operation: $op"
+                    usage
+                    exit 1
                 ;;
             esac
+
+            log "INFO" "Script execution completed"
         ;;
         *)
-            usage; exit 1
+            echo "Error: Invalid kind: $kind" >&2
+            usage
+            exit 1
         ;;
     esac
 }
