@@ -1,10 +1,17 @@
 #!/bin/zsh
+
+# Enable error handling
 set -e
 
-MSG_REQ_FFMPEG="Error. No 'ffmpeg' found. Try \`brew install ffmpeg\` or updating your \$PATH."
-MSG_ERR_NOT_FOUND="Error. Source file not found:"
-
+# Define log file path at the beginning
 log_file=""
+
+# Function to display error messages
+display_error() {
+    local message="$1"
+    echo "Error: $message" >&2
+    [ -n "$log_file" ] && log "ERROR" "$message"
+}
 
 log() {
     local level="$1"
@@ -22,179 +29,219 @@ log() {
 
 check_dependency() {
     if ! command -v "$1" &>/dev/null; then
-        [ -n "$log_file" ] && log "ERROR" "Dependency not found: $1"
-        echo "$MSG_REQ_FFMPEG" >&2
+        display_error "Dependency not found: $1"
         exit 1
     fi
 }
 
 find_or_die() {
     if [ ! -f "$1" ]; then
-        [ -n "$log_file" ] && log "ERROR" "Source file not found: $1"
-        echo "$MSG_ERR_NOT_FOUND $1" >&2
+        display_error "Source file not found: $1"
         exit 1
     fi
+    log "INFO" "File found: $1"
 }
 
-refine_video() {
+get_video_info() {
     local source="$1"
+    local info
+    info=$(ffprobe -v quiet -print_format json -show_format -show_streams "$source" 2>> "$log_file")
     
-    # Get the current bitrate of the input video
-    local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1:nokey=1 "$source")
+    local width=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .width')
+    local height=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .height')
+    local duration=$(echo "$info" | jq -r '.format.duration')
+    local bitrate=$(echo "$info" | jq -r '.format.bit_rate')
+    local filesize=$(stat -f%z "$source")
 
-    # If bitrate is not found, not a number, or is 0, try to estimate it from file size and duration
-    if ! [[ "$bitrate" =~ ^[0-9]+$ ]] || [ "$bitrate" -eq 0 ]; then
-        local filesize=$(stat -f%z "$source")
-        local duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$source")
-        
-        # Check if duration is a valid number
-        if [[ "$duration" =~ ^[0-9]+([.][0-9]+)?$ ]] && (( $(echo "$duration > 0" | bc -l) )); then
-            bitrate=$(echo "scale=0; 8 * $filesize / $duration" | bc)
+    # Check if any of the values are empty or null, and provide default values
+    width=${width:-0}
+    height=${height:-0}
+    duration=${duration:-0}
+    bitrate=${bitrate:-0}
+
+    log "INFO" "Video info - Width: $width, Height: $height, Duration: $duration, Bitrate: $bitrate, Filesize: $filesize"
+
+    echo "$width $height $duration $bitrate $filesize"
+}
+
+calculate_optimal_bitrate() {
+    local width="$1"
+    local height="$2"
+    local current_bitrate="$3"
+    local filesize="$4"
+    local duration="$5"
+    
+    # Calculate pixels
+    local pixels=$((width * height))
+
+    # Base bitrate on resolution, but aim for lower bitrates
+    local new_bitrate
+    if [ "$pixels" -gt 2073600 ]; then  # 1080p and above
+        new_bitrate=5000000
+    elif [ "$pixels" -gt 921600 ]; then  # 720p
+        new_bitrate=3000000
+    else
+        new_bitrate=1500000
+    fi
+
+    # If current bitrate is lower and non-zero, use it as a base
+    if [ "$current_bitrate" -ne 0 ] && [ "$current_bitrate" -lt "$new_bitrate" ]; then
+        new_bitrate=$current_bitrate
+    fi
+
+    # Adjust based on current file size and duration, aim for 20% reduction
+    # Only apply this if duration is non-zero to avoid division by zero
+    if [ "$duration" != "0" ]; then
+        local target_bitrate=$((filesize * 8 * 80 / (duration * 100)))
+        if [ "$target_bitrate" -lt "$new_bitrate" ]; then
+            new_bitrate=$target_bitrate
         fi
     fi
 
-    # If bitrate is still not a valid number or is 0, set a default value (e.g., 1.5Mbps)
-    if ! [[ "$bitrate" =~ ^[0-9]+$ ]] || [ "$bitrate" -eq 0 ]; then
-        bitrate=1500000
+    # Ensure new_bitrate is at least 100000 to avoid issues
+    if [ "$new_bitrate" -lt 100000 ]; then
+        new_bitrate=100000
     fi
 
-    # Re-encode the video using H.264 codec with hardware acceleration
-    ffmpeg -i "$source" \
-        -vcodec h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize $((bitrate / 2)) \
-        -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -pix_fmt yuv420p \
-        -acodec aac -b:a 128k -movflags +faststart \
-        -y "${source%.*}.refined.mp4"
+    # Round to nearest 100k
+    new_bitrate=$(((new_bitrate + 50000) / 100000 * 100000))
+
+    log "INFO" "Calculated optimal bitrate: $new_bitrate"
+    echo "$new_bitrate"
 }
 
-enhance_video() {
+process_video() {
     local source="$1"
-    local param="$2"
-    find_or_die "$param"
-    
-    # Get the current bitrate of the input video
-    local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source" | grep -o '[0-9]\+')
+    local operation="$2"
+    local param="$3"
+    local output="${source%.*}.$operation.mp4"
+    local video_info
+    video_info=$(get_video_info "$source")
+    read -r width height duration bitrate filesize <<< "$video_info"
 
-    # If bitrate is not found, set a default value (e.g., 1.5Mbps)
-    if [ -z "$bitrate" ]; then
-        bitrate=1500000
+    local new_bitrate
+    new_bitrate=$(calculate_optimal_bitrate "$width" "$height" "$bitrate" "$filesize" "$duration")
+
+    # Calculate optimal thread count (assuming M3 Pro has 11 CPU cores)
+    local thread_count=11
+
+    local ffmpeg_common_options="-c:v libx264 -preset slower -crf 23 -maxrate $new_bitrate -bufsize $((new_bitrate * 2))"
+    ffmpeg_common_options+=" -threads $thread_count -movflags +faststart -pix_fmt yuv420p"
+    ffmpeg_common_options+=" -profile:v high -level:v 4.2 -x264-params ref=4:bframes=3:b-adapt=2:rc-lookahead=50"
+
+    local ffmpeg_command="ffmpeg -i \"$source\""
+
+    case "$operation" in
+        refine)
+            ffmpeg_command+=" $ffmpeg_common_options"
+            ffmpeg_command+=" -vf \"scale=trunc(iw/2)*2:trunc(ih/2)*2\""
+            ffmpeg_command+=" -c:a aac -b:a 128k"
+            ;;
+        enhance)
+            ffmpeg_command+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
+            ffmpeg_command+=" $ffmpeg_common_options"
+            ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
+            ;;
+        loop_audio)
+            ffmpeg_command+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
+            ffmpeg_command+=" $ffmpeg_common_options"
+            ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
+            ;;
+        combine_audio)
+            ffmpeg_command+=" -i \"$param\" -map 0:v"
+            ffmpeg_command+=" $ffmpeg_common_options"
+            ffmpeg_command+=" -map 1:a -c:a aac -b:a 192k -shortest"
+            ;;
+        *)
+            display_error "Invalid operation: $operation"
+            exit 1
+            ;;
+    esac
+
+    ffmpeg_command+=" -y \"$output\""
+
+    log "INFO" "Executing FFmpeg command: $ffmpeg_command"
+
+    # Execute FFmpeg command and capture output
+    if ! eval "$ffmpeg_command" > >(tee -a "$log_file") 2>&1; then
+        display_error "FFmpeg command failed. Check log file for details."
+        exit 1
     fi
 
-    ffmpeg -i "$source" \
-        -stream_loop -1 -i "$param" -shortest -map 0:v:0 \
-        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize $((bitrate / 2)) \
-        -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "${source%.*}.enhanced.mp4"
-}
-
-loop_audio() {
-    local source="$1"
-    local param="$2"
-    find_or_die "$param"
-    
-    # Get the current bitrate of the input video
-    local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source" | grep -o '[0-9]\+')
-
-    # If bitrate is not found, set a default value (e.g., 1.5Mbps)
-    if [ -z "$bitrate" ]; then
-        bitrate=1500000
+    # Check if output file was created and has a non-zero size
+    if [ ! -s "$output" ]; then
+        display_error "Output file was not created or is empty. Check log file for details."
+        exit 1
     fi
 
-    ffmpeg -stream_loop -1 -i "$source" -i "$param" -shortest -map 0:v:0 \
-        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize $((bitrate / 2)) \
-        -map 1:a:0 -c:a aac -pix_fmt yuv420p -movflags +faststart -y "${source%.*}.audio_looped.mp4"
-}
-
-combine_audio() {
-    local source="$1"
-    local param="$2"
-    find_or_die "$param"
-    
-    # Get the current bitrate of the input video
-    local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source" | grep -o '[0-9]\+')
-
-    # If bitrate is not found, set a default value (e.g., 1.5Mbps)
-    if [ -z "$bitrate" ]; then
-        bitrate=1500000
-    fi
-
-    ffmpeg -i "$source" -i "$param" -map 0:v \
-        -c:v h264_videotoolbox -b:v "$bitrate" -maxrate "$bitrate" -bufsize $((bitrate / 2)) -tune stillimage \
-        -map 1:a -c:a aac -pix_fmt yuv420p -shortest -movflags +faststart "${source%.*}.combined_audio.mp4"
+    # Log output file info
+    local output_info
+    output_info=$(get_video_info "$output")
+    log "INFO" "Output file info: $output_info"
 }
 
 usage() {
-    check_dependency ffmpeg
-
     cat <<EOT
-Usage for videos: \`automat -v [refine|enhance|loop_audio|combine_audio|add_voice] MOVIE [ADD-IN]'
-
-Example 1: Simple integration with Automator
-======
-export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
-for f in "\$@"
-do
-    ~/bin/automat -v refine "\$f"
-done
-
-Example 2: Enhance video with background music
-======
-export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
-for f in "\$@"
-do
-    ~/bin/automat -v enhance "\$f" "background_music.mp3"
-done
+Usage: automat -v [refine|enhance|loop_audio|combine_audio] SOURCE [ADD-IN]
+Options:
+  -v              Process video
+  refine          Refine the video
+  enhance         Enhance video with background music
+  loop_audio      Loop audio over video
+  combine_audio   Combine video with a different audio track
+  SOURCE          Path to the source video file
+  ADD-IN          Path to the additional audio file (for enhance, loop_audio, and combine_audio operations)
 EOT
 }
 
 main() {
-    local kind="$1"
-    local op="$2"
-
-    case "$kind" in
-        -v)
-            local source="$3"
-            local param="$4"
-
-            # Set up logging first
-            log_file="${source%.*}.log"
-
-            find_or_die "$source"
-            check_dependency ffmpeg
-            check_dependency jq
-
-            log "INFO" "Starting script execution for $op operation on $source"
-
-            case "$op" in
-                refine)
-                    refine_video "$source"
+    while getopts ":v" opt; do
+        case ${opt} in
+            v )
+                # Video processing mode
                 ;;
-                enhance)
-                    enhance_video "$source" "$param"
+            \? )
+                display_error "Invalid option: $OPTARG"
+                usage
+                exit 1
                 ;;
-                loop_audio)
-                    loop_audio "$source" "$param"
-                ;;
-                combine_audio)
-                    combine_audio "$source" "$param"
-                ;;
-                *)
-                    log "ERROR" "Invalid operation: $op"
-                    usage
-                    exit 1
-                ;;
-            esac
+        esac
+    done
+    shift $((OPTIND -1))
 
-            log "INFO" "Script execution completed"
-        ;;
+    local operation="$1"
+    local source="$2"
+    local param="$3"
+
+    # Set up logging
+    log_file="${source%.*}.log"
+
+    # Check dependencies
+    check_dependency ffmpeg
+    check_dependency jq
+
+    # Validate input
+    [ -z "$operation" ] && { display_error "Operation not specified"; usage; exit 1; }
+    [ -z "$source" ] && { display_error "Source file not specified"; usage; exit 1; }
+    find_or_die "$source"
+
+    case "$operation" in
+        refine)
+            ;;
+        enhance|loop_audio|combine_audio)
+            [ -z "$param" ] && { display_error "Additional file not specified for $operation operation"; usage; exit 1; }
+            find_or_die "$param"
+            ;;
         *)
-            echo "Error: Invalid kind: $kind" >&2
+            display_error "Invalid operation: $operation"
             usage
             exit 1
-        ;;
+            ;;
     esac
+
+    log "INFO" "Starting $operation operation on $source"
+    process_video "$source" "$operation" "$param"
+    log "INFO" "Operation completed successfully"
 }
 
 main "$@"
