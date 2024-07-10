@@ -19,10 +19,21 @@ refine_video() {
     
     # Get the current bitrate of the input video
     local bitrate
-    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of csv=p=0 "$source" | grep -o '[0-9]\+')
+    bitrate=$(ffprobe -v error -select_streams v:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1:nokey=1 "$source")
 
-    # If bitrate is not found, set a default value (e.g., 1.5Mbps)
-    if [ -z "$bitrate" ]; then
+    # If bitrate is not found, not a number, or is 0, try to estimate it from file size and duration
+    if ! [[ "$bitrate" =~ ^[0-9]+$ ]] || [ "$bitrate" -eq 0 ]; then
+        local filesize=$(stat -f%z "$source")
+        local duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$source")
+        
+        # Check if duration is a valid number
+        if [[ "$duration" =~ ^[0-9]+([.][0-9]+)?$ ]] && (( $(echo "$duration > 0" | bc -l) )); then
+            bitrate=$(echo "scale=0; 8 * $filesize / $duration" | bc)
+        fi
+    fi
+
+    # If bitrate is still not a valid number or is 0, set a default value (e.g., 1.5Mbps)
+    if ! [[ "$bitrate" =~ ^[0-9]+$ ]] || [ "$bitrate" -eq 0 ]; then
         bitrate=1500000
     fi
 
