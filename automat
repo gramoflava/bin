@@ -182,15 +182,29 @@ process_video() {
 
 usage() {
     cat <<EOT
-Usage: automat -v [refine|enhance|loop_audio|combine_audio] SOURCE [ADD-IN]
+Usage: automat [-v] [operation] [source_file] [additional_file]
+
+Process videos with various operations.
+
 Options:
-  -v              Process video
-  refine          Refine the video
+  -v              Display verbose output and log file information
+
+Operations:
+  refine          Refine video quality (default bitrate, no audio changes)
   enhance         Enhance video with background music
   loop_audio      Loop audio over video
   combine_audio   Combine video with a different audio track
-  SOURCE          Path to the source video file
-  ADD-IN          Path to the additional audio file (for enhance, loop_audio, and combine_audio operations)
+
+Source File:
+  Path to the source video file. Required for all operations.
+
+Additional File (for enhance, loop_audio, and combine_audio):
+  Path to the additional audio file. Only required for enhance, loop_audio, and combine_audio operations.
+
+Example: automat refine my_video.mp4
+        automat -v enhance my_video.mp4 background_music.mp3
+
+Note: This script is intended for advanced users who have a good understanding of video processing and FFmpeg commands.
 EOT
 }
 
