@@ -204,6 +204,12 @@ Additional File (for enhance, loop_audio, and combine_audio):
 Example: automat refine my_video.mp4
         automat -v enhance my_video.mp4 background_music.mp3
 
+Example usage within an Automator script (Quick Action, Run Shell Script, Pass input as arguments):
+source ~/.zshrc
+for f in "$@"; do
+    ~/bin/automat -v refine "$f"
+done
+
 Note: This script is intended for advanced users who have a good understanding of video processing and FFmpeg commands.
 EOT
 }
