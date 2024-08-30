@@ -114,7 +114,6 @@ process_video() {
     local source="$1"
     local operation="$2"
     local param="$3"
-    local output="${source%.*}.$operation.mp4"
     local video_info
     video_info=$(get_video_info "$source")
     read -r width height duration bitrate filesize <<< "$video_info"
@@ -122,8 +121,32 @@ process_video() {
     local new_bitrate
     new_bitrate=$(calculate_optimal_bitrate "$width" "$height" "$bitrate" "$filesize" "$duration")
 
-    # Calculate optimal thread count (assuming M3 Pro has 11 CPU cores)
-    local thread_count=11
+    # Calculate optimal thread count
+    local thread_count=8
+
+    # Define the obfuscated suffixes
+    local suffix
+    case "$operation" in
+        refine)
+            suffix="-re"
+            ;;
+        amv)
+            suffix="-am"
+            ;;
+        loop_audio)
+            suffix="-la"
+            ;;
+        audiofy)
+            suffix="-au"
+            ;;
+        *)
+            display_error "Invalid operation: $operation"
+            exit 1
+            ;;
+    esac
+    
+    # Construct the output filename with the new suffix
+    local output="${source%.*}${suffix}.mp4"
 
     local ffmpeg_common_options="-c:v libx264 -preset slower -crf 23 -maxrate $new_bitrate -bufsize $((new_bitrate * 2))"
     ffmpeg_common_options+=" -threads $thread_count -movflags +faststart -pix_fmt yuv420p"
@@ -137,7 +160,7 @@ process_video() {
             ffmpeg_command+=" -vf \"scale=trunc(iw/2)*2:trunc(ih/2)*2\""
             ffmpeg_command+=" -c:a aac -b:a 128k"
             ;;
-        enhance)
+        amv)
             ffmpeg_command+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
             ffmpeg_command+=" $ffmpeg_common_options"
             ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
@@ -147,7 +170,7 @@ process_video() {
             ffmpeg_command+=" $ffmpeg_common_options"
             ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
             ;;
-        combine_audio)
+        audiofy)
             ffmpeg_command+=" -i \"$param\" -map 0:v"
             ffmpeg_command+=" $ffmpeg_common_options"
             ffmpeg_command+=" -map 1:a -c:a aac -b:a 192k -shortest"
@@ -190,19 +213,19 @@ Options:
   -v              Display verbose output and log file information
 
 Operations:
-  refine          Refine video quality (default bitrate, no audio changes)
-  enhance         Enhance video with background music
-  loop_audio      Loop audio over video
-  combine_audio   Combine video with a different audio track
+  refine        Refine video quality (default bitrate, no audio changes)
+  amv           Replace original audio track in the video with external
+  loop_audio    Loop audio over video
+  audiofy       Combine image or video with a different audio track
 
 Source File:
   Path to the source video file. Required for all operations.
 
-Additional File (for enhance, loop_audio, and combine_audio):
-  Path to the additional audio file. Only required for enhance, loop_audio, and combine_audio operations.
+Additional File (for amv, loop_audio, and audiofy):
+  Path to the additional audio file. Only required for amv, loop_audio, and audiofy operations.
 
 Example: automat refine my_video.mp4
-        automat -v enhance my_video.mp4 background_music.mp3
+        automat -v amv my_video.mp4 background_music.mp3
 
 Example usage within an Automator script (Quick Action, Run Shell Script, Pass input as arguments):
 source ~/.zshrc
@@ -248,7 +271,7 @@ main() {
     case "$operation" in
         refine)
             ;;
-        enhance|loop_audio|combine_audio)
+        amv|loop_audio|audiofy)
             [ -z "$param" ] && { display_error "Additional file not specified for $operation operation"; usage; exit 1; }
             find_or_die "$param"
             ;;
