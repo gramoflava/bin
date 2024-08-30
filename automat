@@ -17,13 +17,13 @@ log() {
     local level="$1"
     local message="$2"
     local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
-    
+
     # Ensure the directory for the log file exists
     mkdir -p "$(dirname "$log_file")"
-    
+
     # Create the log file if it doesn't exist
     touch "$log_file"
-    
+
     echo "[$timestamp] [$level] $message" >> "$log_file"
 }
 
@@ -46,7 +46,7 @@ get_video_info() {
     local source="$1"
     local info
     info=$(ffprobe -v quiet -print_format json -show_format -show_streams "$source" 2>> "$log_file")
-    
+
     local width=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .width')
     local height=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .height')
     local duration=$(echo "$info" | jq -r '.format.duration')
@@ -70,7 +70,7 @@ calculate_optimal_bitrate() {
     local current_bitrate="$3"
     local filesize="$4"
     local duration="$5"
-    
+
     # Calculate pixels
     local pixels=$((width * height))
 
@@ -114,6 +114,9 @@ process_video() {
     local source="$1"
     local operation="$2"
     local param="$3"
+    local codec="$4"
+    local use_gpu="$5"
+    local output_format="$6"
     local video_info
     video_info=$(get_video_info "$source")
     read -r width height duration bitrate filesize <<< "$video_info"
@@ -144,35 +147,92 @@ process_video() {
             exit 1
             ;;
     esac
-    
-    # Construct the output filename with the new suffix
-    local output="${source%.*}${suffix}.mp4"
 
-    local ffmpeg_common_options="-c:v libx264 -preset slower -crf 23 -maxrate $new_bitrate -bufsize $((new_bitrate * 2))"
+    # Construct the output filename with the new suffix and format
+    local output="${source%.*}${suffix}.${output_format}"
+
+    local ffmpeg_common_options=""
+    local video_filter="scale=trunc(iw/2)*2:trunc(ih/2)*2"
+
+    # Set codec-specific options
+    case "$codec" in
+        h264)
+            if [ "$use_gpu" = "true" ] && command -v nvidia-smi &>/dev/null; then
+                ffmpeg_common_options="-c:v h264_nvenc -preset slow -rc:v vbr_hq"
+                video_filter="scale_npp=w=trunc(iw/2)*2:h=trunc(ih/2)*2"
+            else
+                ffmpeg_common_options="-c:v libx264 -preset slower -crf 23"
+            fi
+            ffmpeg_common_options+=" -profile:v high -level:v 4.2"
+            ;;
+        hevc)
+            if [ "$use_gpu" = "true" ] && command -v nvidia-smi &>/dev/null; then
+                ffmpeg_common_options="-c:v hevc_nvenc -preset slow -rc:v vbr_hq"
+                video_filter="scale_npp=w=trunc(iw/2)*2:h=trunc(ih/2)*2"
+            else
+                ffmpeg_common_options="-c:v libx265 -preset medium -crf 28"
+            fi
+            ffmpeg_common_options+=" -tag:v hvc1 -profile:v main"
+            ;;
+        av1)
+            ffmpeg_common_options="-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
+            ;;
+        *)
+            display_error "Invalid codec: $codec"
+            exit 1
+            ;;
+    esac
+
+    ffmpeg_common_options+=" -maxrate $new_bitrate -bufsize $((new_bitrate * 2))"
     ffmpeg_common_options+=" -threads $thread_count -movflags +faststart -pix_fmt yuv420p"
-    ffmpeg_common_options+=" -profile:v high -level:v 4.2 -x264-params ref=4:bframes=3:b-adapt=2:rc-lookahead=50"
+
+    # Set format-specific options
+    case "$output_format" in
+        mp4|m4v)
+            # MP4 settings (already set in ffmpeg_common_options)
+            ;;
+        mkv)
+            ffmpeg_common_options+=" -f matroska"
+            ;;
+        webm)
+            if [ "$codec" != "av1" ]; then
+                ffmpeg_common_options="-c:v libvpx-vp9 -crf 30 -b:v 0"
+            fi
+            ffmpeg_common_options+=" -f webm"
+            ;;
+        mov)
+            # QuickTime settings (similar to MP4)
+            ;;
+        *)
+            display_error "Invalid output format: $output_format"
+            exit 1
+            ;;
+    esac
 
     local ffmpeg_command="ffmpeg -i \"$source\""
 
     case "$operation" in
         refine)
             ffmpeg_command+=" $ffmpeg_common_options"
-            ffmpeg_command+=" -vf \"scale=trunc(iw/2)*2:trunc(ih/2)*2\""
+            ffmpeg_command+=" -vf \"$video_filter\""
             ffmpeg_command+=" -c:a aac -b:a 128k"
             ;;
         amv)
             ffmpeg_command+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
             ffmpeg_command+=" $ffmpeg_common_options"
+            ffmpeg_command+=" -vf \"$video_filter\""
             ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
             ;;
         loop_audio)
             ffmpeg_command+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
             ffmpeg_command+=" $ffmpeg_common_options"
+            ffmpeg_command+=" -vf \"$video_filter\""
             ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
             ;;
         audiofy)
             ffmpeg_command+=" -i \"$param\" -map 0:v"
             ffmpeg_command+=" $ffmpeg_common_options"
+            ffmpeg_command+=" -vf \"$video_filter\""
             ffmpeg_command+=" -map 1:a -c:a aac -b:a 192k -shortest"
             ;;
         *)
@@ -205,12 +265,15 @@ process_video() {
 
 usage() {
     cat <<EOT
-Usage: automat [-v] [operation] [source_file] [additional_file]
+Usage: automat [-v] [-c codec] [-g] [-f format] [operation] [source_file] [additional_file]
 
 Process videos with various operations.
 
 Options:
   -v              Display verbose output and log file information
+  -c codec        Specify codec (h264, hevc, av1) (default: h264)
+  -g              Use GPU acceleration (if available)
+  -f format       Specify output format (mp4, mkv, webm, mov, m4v) (default: mp4)
 
 Operations:
   refine        Refine video quality (default bitrate, no audio changes)
@@ -224,13 +287,13 @@ Source File:
 Additional File (for amv, loop_audio, and audiofy):
   Path to the additional audio file. Only required for amv, loop_audio, and audiofy operations.
 
-Example: automat refine my_video.mp4
-        automat -v amv my_video.mp4 background_music.mp3
+Example: automat -c hevc -g -f mkv refine my_video.mp4
+         automat -v -c av1 -f webm amv my_video.mp4 background_music.mp3
 
 Example usage within an Automator script (Quick Action, Run Shell Script, Pass input as arguments):
 source ~/.zshrc
 for f in "$@"; do
-    ~/bin/automat -v refine "$f"
+    ~/bin/automat -v -c hevc -g -f mkv refine "$f"
 done
 
 Note: This script is intended for advanced users who have a good understanding of video processing and FFmpeg commands.
@@ -238,13 +301,32 @@ EOT
 }
 
 main() {
-    while getopts ":v" opt; do
+    local verbose=false
+    local codec="hevc"
+    local use_gpu=false
+    local output_format="mov"
+
+    while getopts ":vc:gf:" opt; do
         case ${opt} in
             v )
-                # Video processing mode
+                verbose=true
+                ;;
+            c )
+                codec=$OPTARG
+                ;;
+            g )
+                use_gpu=true
+                ;;
+            f )
+                output_format=$OPTARG
                 ;;
             \? )
                 display_error "Invalid option: $OPTARG"
+                usage
+                exit 1
+                ;;
+            : )
+                display_error "Invalid option: $OPTARG requires an argument"
                 usage
                 exit 1
                 ;;
@@ -282,8 +364,8 @@ main() {
             ;;
     esac
 
-    log "INFO" "Starting $operation operation on $source"
-    process_video "$source" "$operation" "$param"
+    log "INFO" "Starting $operation operation on $source with codec $codec (GPU: $use_gpu) and output format $output_format"
+    process_video "$source" "$operation" "$param" "$codec" "$use_gpu" "$output_format"
     log "INFO" "Operation completed successfully"
 }
 
