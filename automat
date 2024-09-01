@@ -14,17 +14,19 @@ display_error() {
 }
 
 log() {
-    local level="$1"
-    local message="$2"
-    local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+    if [ "$enable_logging" = true ]; then
+        local level="$1"
+        local message="$2"
+        local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
 
-    # Ensure the directory for the log file exists
-    mkdir -p "$(dirname "$log_file")"
+        # Ensure the directory for the log file exists
+        mkdir -p "$(dirname "$log_file")"
 
-    # Create the log file if it doesn't exist
-    touch "$log_file"
+        # Create the log file if it doesn't exist
+        touch "$log_file"
 
-    echo "[$timestamp] [$level] $message" >> "$log_file"
+        echo "[$timestamp] [$level] $message" >> "$log_file"
+    fi
 }
 
 check_dependency() {
@@ -265,15 +267,16 @@ process_video() {
 
 usage() {
     cat <<EOT
-Usage: automat [-v] [-c codec] [-g] [-f format] [operation] [source_file] [additional_file]
+Usage: automat [-v] [-c codec] [-g] [-f format] [-l] [operation] [source_file] [additional_file]
 
 Process videos with various operations.
 
 Options:
   -v              Display verbose output and log file information
-  -c codec        Specify codec (h264, hevc, av1) (default: h264)
+  -c codec        Specify codec (h264, hevc, av1) (default: hevc)
   -g              Use GPU acceleration (if available)
-  -f format       Specify output format (mp4, mkv, webm, mov, m4v) (default: mp4)
+  -f format       Specify output format (mp4, mkv, webm, mov, m4v) (default: mov)
+  -l              Enable logging (default: disabled)
 
 Operations:
   refine        Refine video quality (default bitrate, no audio changes)
@@ -287,13 +290,13 @@ Source File:
 Additional File (for amv, loop_audio, and audiofy):
   Path to the additional audio file. Only required for amv, loop_audio, and audiofy operations.
 
-Example: automat -c hevc -g -f mkv refine my_video.mp4
+Example: automat -c hevc -g -f mkv -l refine my_video.mp4
          automat -v -c av1 -f webm amv my_video.mp4 background_music.mp3
 
 Example usage within an Automator script (Quick Action, Run Shell Script, Pass input as arguments):
 source ~/.zshrc
 for f in "$@"; do
-    ~/bin/automat -v -c hevc -g -f mkv refine "$f"
+    ~/bin/automat -v -c hevc -g -f mkv -l refine "$f"
 done
 
 Note: This script is intended for advanced users who have a good understanding of video processing and FFmpeg commands.
@@ -305,8 +308,9 @@ main() {
     local codec="hevc"
     local use_gpu=false
     local output_format="mov"
+    local enable_logging=false
 
-    while getopts ":vc:gf:" opt; do
+    while getopts ":vc:gf:l" opt; do
         case ${opt} in
             v )
                 verbose=true
@@ -319,6 +323,9 @@ main() {
                 ;;
             f )
                 output_format=$OPTARG
+                ;;
+            l )
+                enable_logging=true
                 ;;
             \? )
                 display_error "Invalid option: $OPTARG"
@@ -339,7 +346,11 @@ main() {
     local param="$3"
 
     # Set up logging
-    log_file="${source%.*}.log"
+    if [ "$enable_logging" = true ]; then
+        log_file="${source%.*}.log"
+    else
+        log_file="/dev/null"
+    fi
 
     # Check dependencies
     check_dependency ffmpeg
@@ -367,6 +378,15 @@ main() {
     log "INFO" "Starting $operation operation on $source with codec $codec (GPU: $use_gpu) and output format $output_format"
     process_video "$source" "$operation" "$param" "$codec" "$use_gpu" "$output_format"
     log "INFO" "Operation completed successfully"
+
+    if [ "$verbose" = true ]; then
+        if [ "$enable_logging" = true ]; then
+            echo "Log file: $log_file"
+            cat "$log_file"
+        else
+            echo "Logging is disabled. Use -l option to enable logging."
+        fi
+    fi
 }
 
 main "$@"
