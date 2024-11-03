@@ -29,6 +29,24 @@ log() {
     fi
 }
 
+# Function to move file to trash
+move_to_trash() {
+    local file="$1"
+    local absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
+    
+    osascript <<EOF
+        tell application "Finder"
+            delete POSIX file "$absolute_path"
+        end tell
+EOF
+    
+    if [ $? -eq 0 ]; then
+        log "INFO" "Moved original file to trash: $file"
+    else
+        display_error "Failed to move file to trash: $file"
+    fi
+}
+
 check_dependency() {
     if ! command -v "$1" &>/dev/null; then
         display_error "Dependency not found: $1"
@@ -94,7 +112,7 @@ calculate_optimal_bitrate() {
     # Adjust based on current file size and duration, aim for 20% reduction
     # Only apply this if duration is non-zero to avoid division by zero
     if [ "$duration" != "0" ]; then
-        local target_bitrate=$((filesize * 8 * 80 / (duration * 100)))
+        local target_bitrate=$(awk -v fs="$filesize" -v dur="$duration" 'BEGIN { printf "%d", fs * 8 * 80 / (dur * 100) }')
         if [ "$target_bitrate" -lt "$new_bitrate" ]; then
             new_bitrate=$target_bitrate
         fi
@@ -232,10 +250,10 @@ process_video() {
             ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
             ;;
         audiofy)
-            ffmpeg_command+=" -i \"$param\" -map 0:v"
+            ffmpeg_command="ffmpeg -loop 1 -framerate 25 -i \"$source\" -i \"$param\""
             ffmpeg_command+=" $ffmpeg_common_options"
             ffmpeg_command+=" -vf \"$video_filter\""
-            ffmpeg_command+=" -map 1:a -c:a aac -b:a 192k -shortest"
+            ffmpeg_command+=" -map 0:v -map 1:a -c:a aac -b:a 192k -shortest"
             ;;
         *)
             display_error "Invalid operation: $operation"
@@ -263,11 +281,16 @@ process_video() {
     local output_info
     output_info=$(get_video_info "$output")
     log "INFO" "Output file info: $output_info"
+
+    # If clean option is enabled, move the original file to trash
+    if [ "$clean_mode" = true ]; then
+        move_to_trash "$source"
+    fi
 }
 
 usage() {
     cat <<EOT
-Usage: automat [-v] [-c codec] [-g] [-f format] [-l] [operation] [source_file] [additional_file]
+Usage: automat [-v] [-c codec] [-g] [-f format] [-l] [-t] [operation] [source_file] [additional_file]
 
 Process videos with various operations.
 
@@ -277,6 +300,7 @@ Options:
   -g              Use GPU acceleration (if available)
   -f format       Specify output format (mp4, mkv, webm, mov, m4v) (default: mov)
   -l              Enable logging (default: disabled)
+  -t              Move original file to trash after successful conversion
 
 Operations:
   refine        Refine video quality (default bitrate, no audio changes)
@@ -290,13 +314,13 @@ Source File:
 Additional File (for amv, loop_audio, and audiofy):
   Path to the additional audio file. Only required for amv, loop_audio, and audiofy operations.
 
-Example: automat -c hevc -g -f mkv -l refine my_video.mp4
-         automat -v -c av1 -f webm amv my_video.mp4 background_music.mp3
+Example: automat -c hevc -g -f mkv -l -t refine my_video.mp4
+         automat -v -c av1 -f webm -t amv my_video.mp4 background_music.mp3
 
 Example usage within an Automator script (Quick Action, Run Shell Script, Pass input as arguments):
 source ~/.zshrc
-for f in "$@"; do
-    ~/bin/automat -v -c hevc -g -f mkv -l refine "$f"
+for f in "\$@"; do
+    ~/bin/automat -v -c hevc -g -f mkv -l -t refine "\$f"
 done
 
 Note: This script is intended for advanced users who have a good understanding of video processing and FFmpeg commands.
@@ -309,8 +333,9 @@ main() {
     local use_gpu=false
     local output_format="mov"
     local enable_logging=false
+    local trash_mode=false
 
-    while getopts ":vc:gf:l" opt; do
+    while getopts ":vc:gf:lt" opt; do
         case ${opt} in
             v )
                 verbose=true
@@ -326,6 +351,9 @@ main() {
                 ;;
             l )
                 enable_logging=true
+                ;;
+            t )
+                trash_mode=true
                 ;;
             \? )
                 display_error "Invalid option: $OPTARG"
