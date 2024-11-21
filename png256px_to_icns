@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Check if input is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 /path/to/image.png"
+    exit 1
+fi
+
+# Input file
+INPUT_IMAGE="$1"
+
+# Validate file exists
+if [ ! -f "$INPUT_IMAGE" ]; then
+    echo "Error: File '$INPUT_IMAGE' not found."
+    exit 1
+fi
+
+# Get directory and base name of input file
+INPUT_DIR=$(dirname "$INPUT_IMAGE")
+INPUT_BASENAME=$(basename "$INPUT_IMAGE" .png)
+
+# Output locations
+ICONSET_DIR="${INPUT_DIR}/${INPUT_BASENAME}.iconset"
+ICNS_FILE="${INPUT_DIR}/${INPUT_BASENAME}.icns"
+
+# Create .iconset directory
+mkdir -p "$ICONSET_DIR"
+
+# Sizes required for .icns
+declare -a sizes=("16" "32" "64" "128" "256")
+
+# Generate iconset
+for size in "${sizes[@]}"; do
+    output_file="${ICONSET_DIR}/icon_${size}x${size}.png"
+    sips -z "$size" "$size" "$INPUT_IMAGE" --out "$output_file"
+
+    if [ "$size" -ne 16 ]; then
+        # Generate 2x (Retina) size
+        output_file_2x="${ICONSET_DIR}/icon_${size}x${size}@2x.png"
+        sips -z $((size * 2)) $((size * 2)) "$INPUT_IMAGE" --out "$output_file_2x"
+    fi
+done
+
+# Create .icns file
+iconutil -c icns "$ICONSET_DIR" -o "$ICNS_FILE"
+
+# Cleanup
+rm -rf "$ICONSET_DIR"
+
+echo "ICNS file generated: $ICNS_FILE"
