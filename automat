@@ -8,6 +8,7 @@ LOG_FILE="/tmp/automat.log"
 ENABLE_LOGGING=false
 USE_GPU=false
 TRASH_MODE=false
+SUFFIX="-re"
 
 display_error() {
     local message="$1"
@@ -32,11 +33,9 @@ log() {
 ################################################################################
 is_video_file() {
     local file="$1"
-    # Lowercase the filename and compare
     local ext="${file##*.}"
     ext="$(echo "$ext" | tr '[:upper:]' '[:lower:]')"
 
-    # Add any extensions you want to handle
     case "$ext" in
         mp4|m4v|mov|mkv|webm|avi|flv )
             return 0
@@ -48,21 +47,48 @@ is_video_file() {
 }
 
 ################################################################################
-# BATCH REFINE: NON-RECURSIVE
+# HELPER: CHECK IF FILE HAS AN IMAGE EXTENSION
 ################################################################################
-refine_batch() {
-    local dir="$1"
-    log "INFO" "Refining all video files in directory: $dir"
+is_image_file() {
+    local file="$1"
+    local ext="${file##*.}"
+    ext="$(echo "$ext" | tr '[:upper:]' '[:lower:]')"
 
-    # Loop only one level deep
-    for item in "$dir"/*; do
-        # If it's a file, check if it's a recognized video
-        if [ -f "$item" ] && is_video_file "$item"; then
-            log "INFO" "Refining: $item"
-            process_video "$item" "refine" "" "$codec" "$output_format"
+    case "$ext" in
+        jpg|jpeg|png|bmp|gif|tiff|tif|webp|avif|jxl )
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+################################################################################
+# RECURSIVE REFINE
+################################################################################
+refine_recursive() {
+    local dir="$1"
+    log "INFO" "Recursively refining all video/image files in directory: $dir"
+
+    # Use 'find' to walk through subdirectories:
+    #  -type f => only files
+    #  -print0 => separate filenames with null char
+    #  We skip anything that has '$SUFFIX' in the name (-not -iname "*-re*")
+    #  Adjust the pattern if you want a stricter match, e.g. "*${SUFFIX}.*"
+    while IFS= read -r -d $'\0' item; do
+        # If recognized video, process
+        if is_video_file "$item"; then
+            log "INFO" "Refining video: $item"
+            process_video "$item" "refine" "" "$CODEC" "$OUTPUT_FORMAT"
+        # If recognized image, process
+        elif is_image_file "$item"; then
+            log "INFO" "Refining image: $item"
+            process_image "$item"
         fi
-        # If it's a subdirectory, we do nothing (skip).
-    done
+    done < <(find "$dir" -type f \
+             -not -iname "*${SUFFIX}*" \
+             -print0)
 }
 
 ################################################################################
@@ -76,7 +102,7 @@ move_to_trash() {
     fi
 
     local absolute_path
-    absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
+absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
 
     # More reliable approach to move to trash:
     osascript <<EOF
@@ -113,13 +139,12 @@ get_video_info() {
     bitrate=$(echo "$info" | jq -r '.format.bit_rate')
     filesize=$(stat -f %z "$source")
 
-    # Default fallback values
+    # Default fallback
     width=${width:-0}
     height=${height:-0}
     duration=${duration:-0}
     bitrate=${bitrate:-0}
 
-    # Log or echo info
     log "INFO" "Video info for '$source' => Width: $width, Height: $height, Duration: $duration, Bitrate: $bitrate, Filesize: $filesize"
 
     echo "$width $height $duration $bitrate $filesize"
@@ -144,7 +169,7 @@ calculate_optimal_bitrate() {
         new_bitrate=1500000     # for lower resolutions
     fi
 
-    # If current bitrate is lower, use it
+    # If current is lower, use it
     if [ "$current_bitrate" -ne 0 ] && [ "$current_bitrate" -lt "$new_bitrate" ]; then
         new_bitrate=$current_bitrate
     fi
@@ -180,12 +205,10 @@ build_ffmpeg_command() {
     local new_bitrate="$6"
     local thread_count=8
 
-    # Common filters/arguments
     local video_filter="scale=trunc(iw/2)*2:trunc(ih/2)*2"
     local ffmpeg_args="-maxrate $new_bitrate -bufsize $((new_bitrate * 2))"
     ffmpeg_args+=" -threads $thread_count -movflags +faststart -pix_fmt yuv420p"
 
-    # Decide on codec settings
     case "$codec" in
         h264)
             if [ "$USE_GPU" = true ] && command -v nvidia-smi &>/dev/null; then
@@ -214,8 +237,7 @@ build_ffmpeg_command() {
 
     # Format-specific
     case "$output_format" in
-        mp4|m4v) # MP4-based
-            # remains as is
+        mp4|m4v)
             ;;
         mkv)
             ffmpeg_args="$ffmpeg_args -f matroska"
@@ -228,7 +250,6 @@ build_ffmpeg_command() {
             fi
             ;;
         mov)
-            # QuickTime container
             ;;
         *)
             display_error "Invalid output format: $output_format"
@@ -236,19 +257,7 @@ build_ffmpeg_command() {
             ;;
     esac
 
-    local suffix
-    case "$operation" in
-        refine)      suffix="-re" ;;
-        amv)         suffix="-am" ;;
-        loop_audio)  suffix="-la" ;;
-        audiofy)     suffix="-au" ;;
-        *)
-            display_error "Invalid operation: $operation"
-            exit 1
-            ;;
-    esac
-
-    local output="${source%.*}${suffix}.${output_format}"
+    local output="${source%.*}${SUFFIX}.${output_format}"
 
     local ffmpeg_cmd="ffmpeg -i \"$source\""
 
@@ -268,7 +277,6 @@ build_ffmpeg_command() {
     esac
 
     ffmpeg_cmd+=" -y \"$output\""
-
     echo "$ffmpeg_cmd"
 }
 
@@ -304,13 +312,41 @@ process_video() {
     fi
 
     # Validate output
-    local output="${source%.*}-$(echo $operation | cut -c1,2).${output_format}"  # e.g. myvideo-re.mp4
+    local output="${source%.*}${SUFFIX}.${output_format}"
     if [ ! -s "$output" ]; then
         display_error "Output file is empty or missing."
         exit 1
     fi
 
     # Trash original if requested
+    if [ "$TRASH_MODE" = true ]; then
+        move_to_trash "$source"
+    fi
+}
+
+################################################################################
+# IMAGE PROCESSING
+################################################################################
+process_image() {
+    local source="$1"
+    local output="${source%.*}${SUFFIX}.heic"
+
+    local cmd="sips -s format heic \"$source\" --out \"$output\""
+
+    log "INFO" "Image refine command: $cmd"
+
+    if ! eval "$cmd" >> "$LOG_FILE" 2>&1; then
+        display_error "Image refine command failed. Check log file for details."
+        exit 1
+    fi
+
+    # Validate output
+    if [ ! -s "$output" ]; then
+        display_error "HEIC output file is empty or missing."
+        exit 1
+    fi
+
+    # Optionally trash original if requested
     if [ "$TRASH_MODE" = true ]; then
         move_to_trash "$source"
     fi
@@ -326,13 +362,13 @@ Usage: $(basename "$0") [OPTIONS] <operation> <source> [additional_file]
 Operations:
   refine, amv, loop_audio, audiofy
 
-If 'refine' and <source> is a directory, all video files (one level deep) will be refined.
+If 'refine' and <source> is a directory, all video/image files (one level deep) will be refined.
 
 Options:
   -v              Verbose logging
-  -c <codec>      Codec: h264, hevc, av1 (default: hevc)
-  -g              Use GPU if available
-  -f <format>     Container: mp4, m4v, mkv, webm, mov (default: mov)
+  -c <codec>      Codec: h264, hevc, av1 (default: hevc) for videos
+  -g              Use GPU if available (video only)
+  -f <format>     Video container: mp4, m4v, mkv, webm, mov (default: mov)
   -l              Enable logging
   -t              Trash original file after processing
 EOF
@@ -375,20 +411,29 @@ main() {
     [ -z "$operation" ] && { display_error "No operation specified."; usage; exit 1; }
     [ -z "$source" ] && { display_error "No source file specified."; usage; exit 1; }
 
-    # Overwrite global codec/output_format so that refine_batch() can see them
-    # (If you prefer, pass them as arguments to refine_batch)
+    # Expose global variables so refine_batch() can see them
     CODEC="$codec"
     OUTPUT_FORMAT="$output_format"
 
     case "$operation" in
         refine)
             if [ -d "$source" ]; then
-                refine_batch "$source"
-                exit 0
+                # Recursively process all subdirectories
+                refine_recursive "$source"
             else
-                # Single-file refine (existing logic):
-                [ ! -f "$source" ] && { display_error "Source file not found: $source"; exit 1; }
-                process_video "$source" "$operation" "$param" "$codec" "$output_format"
+                # Single-file refine
+                [ ! -f "$source" ] && {
+                    display_error "Source file not found: $source"
+                    exit 1
+                }
+                if is_video_file "$source"; then
+                    process_video "$source" "$operation" "$param" "$codec" "$output_format"
+                elif is_image_file "$source"; then
+                    process_image "$source"
+                else
+                    display_error "Unsupported file type for refine: $source"
+                    exit 1
+                fi
             fi
             ;;
         amv|loop_audio|audiofy)
