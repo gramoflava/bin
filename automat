@@ -1,49 +1,29 @@
 #!/bin/zsh
-
-# Enable error handling
 set -e
 
-# Define log file path at the beginning
-log_file=""
+################################################################################
+# GLOBAL SETTINGS & ERROR HANDLING
+################################################################################
+LOG_FILE="/tmp/automat.log"
+ENABLE_LOGGING=false
+USE_GPU=false
+TRASH_MODE=false
 
-# Function to display error messages
 display_error() {
     local message="$1"
     echo "Error: $message" >&2
-    [ -n "$log_file" ] && log "ERROR" "$message"
+    log "ERROR" "$message"
 }
 
 log() {
-    if [ "$enable_logging" = true ]; then
+    if [ "$ENABLE_LOGGING" = true ]; then
         local level="$1"
         local message="$2"
-        local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
-
-        # Ensure the directory for the log file exists
-        mkdir -p "$(dirname "$log_file")"
-
-        # Create the log file if it doesn't exist
-        touch "$log_file"
-
-        echo "[$timestamp] [$level] $message" >> "$log_file"
-    fi
-}
-
-# Function to move file to trash
-move_to_trash() {
-    local file="$1"
-    local absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
-    
-    osascript <<EOF
-        tell application "Finder"
-            delete POSIX file "$absolute_path"
-        end tell
-EOF
-    
-    if [ $? -eq 0 ]; then
-        log "INFO" "Moved original file to trash: $file"
-    else
-        display_error "Failed to move file to trash: $file"
+        local timestamp
+        timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+        mkdir -p "$(dirname "$LOG_FILE")"
+        touch "$LOG_FILE"
+        echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
     fi
 }
 
@@ -54,32 +34,62 @@ check_dependency() {
     fi
 }
 
-find_or_die() {
-    if [ ! -f "$1" ]; then
-        display_error "Source file not found: $1"
-        exit 1
+################################################################################
+# FILE TRASHING
+################################################################################
+move_to_trash() {
+    local file="$1"
+    if [ -z "$file" ]; then
+        display_error "No file specified for move_to_trash"
+        return 1
     fi
-    log "INFO" "File found: $1"
+
+    local absolute_path
+    absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
+
+    # More reliable approach to move to trash:
+    osascript <<EOF
+        try
+            tell application "Finder"
+                move POSIX file "$absolute_path" to trash
+            end tell
+        on error errMsg number errNum
+            do shell script "echo 'Error: " & errMsg & " (Error Number: " & errNum & ")' >&2"
+        end try
+EOF
+
+    if [ $? -eq 0 ]; then
+        log "INFO" "Moved file to trash: $file"
+        echo "Moved file to trash: $file"
+    else
+        display_error "Failed to move file to trash: $file"
+        return 1
+    fi
 }
 
+################################################################################
+# VIDEO INFORMATION & BITRATE CALC
+################################################################################
 get_video_info() {
     local source="$1"
     local info
-    info=$(ffprobe -v quiet -print_format json -show_format -show_streams "$source" 2>> "$log_file")
+    info=$(ffprobe -v quiet -print_format json -show_format -show_streams "$source")
 
-    local width=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .width')
-    local height=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .height')
-    local duration=$(echo "$info" | jq -r '.format.duration')
-    local bitrate=$(echo "$info" | jq -r '.format.bit_rate')
-    local filesize=$(stat -f%z "$source")
+    local width height duration bitrate filesize
+    width=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .width')
+    height=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .height')
+    duration=$(echo "$info" | jq -r '.format.duration')
+    bitrate=$(echo "$info" | jq -r '.format.bit_rate')
+    filesize=$(stat -f %z "$source")
 
-    # Check if any of the values are empty or null, and provide default values
+    # Default fallback values
     width=${width:-0}
     height=${height:-0}
     duration=${duration:-0}
     bitrate=${bitrate:-0}
 
-    log "INFO" "Video info - Width: $width, Height: $height, Duration: $duration, Bitrate: $bitrate, Filesize: $filesize"
+    # Log or echo info
+    log "INFO" "Video info for '$source' => Width: $width, Height: $height, Duration: $duration, Bitrate: $bitrate, Filesize: $filesize"
 
     echo "$width $height $duration $bitrate $filesize"
 }
@@ -91,37 +101,34 @@ calculate_optimal_bitrate() {
     local filesize="$4"
     local duration="$5"
 
-    # Calculate pixels
     local pixels=$((width * height))
-
-    # Base bitrate on resolution, but aim for lower bitrates
     local new_bitrate
-    if [ "$pixels" -gt 2073600 ]; then  # 1080p and above
-        new_bitrate=5000000
-    elif [ "$pixels" -gt 921600 ]; then  # 720p
-        new_bitrate=3000000
+
+    # Basic resolution thresholds
+    if [ "$pixels" -gt 2073600 ]; then
+        new_bitrate=5000000     # for 1080p+
+    elif [ "$pixels" -gt 921600 ]; then
+        new_bitrate=3000000     # for 720p
     else
-        new_bitrate=1500000
+        new_bitrate=1500000     # for lower resolutions
     fi
 
-    # If current bitrate is lower and non-zero, use it as a base
+    # If current bitrate is lower, use it
     if [ "$current_bitrate" -ne 0 ] && [ "$current_bitrate" -lt "$new_bitrate" ]; then
         new_bitrate=$current_bitrate
     fi
 
-    # Adjust based on current file size and duration, aim for 20% reduction
-    # Only apply this if duration is non-zero to avoid division by zero
+    # Further reduce based on filesize and duration
     if [ "$duration" != "0" ]; then
-        local target_bitrate=$(awk -v fs="$filesize" -v dur="$duration" 'BEGIN { printf "%d", fs * 8 * 80 / (dur * 100) }')
+        local target_bitrate
+        target_bitrate=$(awk -v fs="$filesize" -v dur="$duration" 'BEGIN { printf "%d", fs * 8 * 80 / (dur * 100) }')
         if [ "$target_bitrate" -lt "$new_bitrate" ]; then
             new_bitrate=$target_bitrate
         fi
     fi
 
-    # Ensure new_bitrate is at least 100000 to avoid issues
-    if [ "$new_bitrate" -lt 100000 ]; then
-        new_bitrate=100000
-    fi
+    # Minimum
+    [ "$new_bitrate" -lt 100000 ] && new_bitrate=100000
 
     # Round to nearest 100k
     new_bitrate=$(((new_bitrate + 50000) / 100000 * 100000))
@@ -130,72 +137,43 @@ calculate_optimal_bitrate() {
     echo "$new_bitrate"
 }
 
-process_video() {
+################################################################################
+# FFmpeg Command Construction
+################################################################################
+build_ffmpeg_command() {
     local source="$1"
     local operation="$2"
     local param="$3"
     local codec="$4"
-    local use_gpu="$5"
-    local output_format="$6"
-    local video_info
-    video_info=$(get_video_info "$source")
-    read -r width height duration bitrate filesize <<< "$video_info"
-
-    local new_bitrate
-    new_bitrate=$(calculate_optimal_bitrate "$width" "$height" "$bitrate" "$filesize" "$duration")
-
-    # Calculate optimal thread count
+    local output_format="$5"
+    local new_bitrate="$6"
     local thread_count=8
 
-    # Define the obfuscated suffixes
-    local suffix
-    case "$operation" in
-        refine)
-            suffix="-re"
-            ;;
-        amv)
-            suffix="-am"
-            ;;
-        loop_audio)
-            suffix="-la"
-            ;;
-        audiofy)
-            suffix="-au"
-            ;;
-        *)
-            display_error "Invalid operation: $operation"
-            exit 1
-            ;;
-    esac
-
-    # Construct the output filename with the new suffix and format
-    local output="${source%.*}${suffix}.${output_format}"
-
-    local ffmpeg_common_options=""
+    # Common filters/arguments
     local video_filter="scale=trunc(iw/2)*2:trunc(ih/2)*2"
+    local ffmpeg_args="-maxrate $new_bitrate -bufsize $((new_bitrate * 2))"
+    ffmpeg_args+=" -threads $thread_count -movflags +faststart -pix_fmt yuv420p"
 
-    # Set codec-specific options
+    # Decide on codec settings
     case "$codec" in
         h264)
-            if [ "$use_gpu" = "true" ] && command -v nvidia-smi &>/dev/null; then
-                ffmpeg_common_options="-c:v h264_nvenc -preset slow -rc:v vbr_hq"
+            if [ "$USE_GPU" = true ] && command -v nvidia-smi &>/dev/null; then
+                ffmpeg_args="-c:v h264_nvenc -preset slow -rc:v vbr_hq $ffmpeg_args"
                 video_filter="scale_npp=w=trunc(iw/2)*2:h=trunc(ih/2)*2"
             else
-                ffmpeg_common_options="-c:v libx264 -preset slower -crf 23"
+                ffmpeg_args="-c:v libx264 -preset slower -crf 23 -profile:v high -level:v 4.2 $ffmpeg_args"
             fi
-            ffmpeg_common_options+=" -profile:v high -level:v 4.2"
             ;;
         hevc)
-            if [ "$use_gpu" = "true" ] && command -v nvidia-smi &>/dev/null; then
-                ffmpeg_common_options="-c:v hevc_nvenc -preset slow -rc:v vbr_hq"
+            if [ "$USE_GPU" = true ] && command -v nvidia-smi &>/dev/null; then
+                ffmpeg_args="-c:v hevc_nvenc -preset slow -rc:v vbr_hq $ffmpeg_args"
                 video_filter="scale_npp=w=trunc(iw/2)*2:h=trunc(ih/2)*2"
             else
-                ffmpeg_common_options="-c:v libx265 -preset medium -crf 28"
+                ffmpeg_args="-c:v libx265 -preset medium -crf 28 -tag:v hvc1 -profile:v main $ffmpeg_args"
             fi
-            ffmpeg_common_options+=" -tag:v hvc1 -profile:v main"
             ;;
         av1)
-            ffmpeg_common_options="-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
+            ffmpeg_args="-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental $ffmpeg_args"
             ;;
         *)
             display_error "Invalid codec: $codec"
@@ -203,25 +181,23 @@ process_video() {
             ;;
     esac
 
-    ffmpeg_common_options+=" -maxrate $new_bitrate -bufsize $((new_bitrate * 2))"
-    ffmpeg_common_options+=" -threads $thread_count -movflags +faststart -pix_fmt yuv420p"
-
-    # Set format-specific options
+    # Format-specific
     case "$output_format" in
-        mp4|m4v)
-            # MP4 settings (already set in ffmpeg_common_options)
+        mp4|m4v) # MP4-based
+            # remains as is
             ;;
         mkv)
-            ffmpeg_common_options+=" -f matroska"
+            ffmpeg_args="$ffmpeg_args -f matroska"
             ;;
         webm)
             if [ "$codec" != "av1" ]; then
-                ffmpeg_common_options="-c:v libvpx-vp9 -crf 30 -b:v 0"
+                ffmpeg_args="-c:v libvpx-vp9 -crf 30 -b:v 0 -f webm"
+            else
+                ffmpeg_args="$ffmpeg_args -f webm"
             fi
-            ffmpeg_common_options+=" -f webm"
             ;;
         mov)
-            # QuickTime settings (similar to MP4)
+            # QuickTime container
             ;;
         *)
             display_error "Invalid output format: $output_format"
@@ -229,172 +205,150 @@ process_video() {
             ;;
     esac
 
-    local ffmpeg_command="ffmpeg -i \"$source\""
-
+    local suffix
     case "$operation" in
-        refine)
-            ffmpeg_command+=" $ffmpeg_common_options"
-            ffmpeg_command+=" -vf \"$video_filter\""
-            ffmpeg_command+=" -c:a aac -b:a 128k"
-            ;;
-        amv)
-            ffmpeg_command+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
-            ffmpeg_command+=" $ffmpeg_common_options"
-            ffmpeg_command+=" -vf \"$video_filter\""
-            ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
-            ;;
-        loop_audio)
-            ffmpeg_command+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
-            ffmpeg_command+=" $ffmpeg_common_options"
-            ffmpeg_command+=" -vf \"$video_filter\""
-            ffmpeg_command+=" -map 1:a:0 -c:a aac -b:a 192k"
-            ;;
-        audiofy)
-            ffmpeg_command="ffmpeg -loop 1 -framerate 25 -i \"$source\" -i \"$param\""
-            ffmpeg_command+=" $ffmpeg_common_options"
-            ffmpeg_command+=" -vf \"$video_filter\""
-            ffmpeg_command+=" -map 0:v -map 1:a -c:a aac -b:a 192k -shortest"
-            ;;
+        refine)      suffix="-re" ;;
+        amv)         suffix="-am" ;;
+        loop_audio)  suffix="-la" ;;
+        audiofy)     suffix="-au" ;;
         *)
             display_error "Invalid operation: $operation"
             exit 1
             ;;
     esac
 
-    ffmpeg_command+=" -y \"$output\""
+    local output="${source%.*}${suffix}.${output_format}"
 
-    log "INFO" "Executing FFmpeg command: $ffmpeg_command"
+    local ffmpeg_cmd="ffmpeg -i \"$source\""
 
-    # Execute FFmpeg command and capture output
-    if ! eval "$ffmpeg_command" >> "$log_file" 2>&1; then
+    case "$operation" in
+        refine)
+            ffmpeg_cmd+=" $ffmpeg_args -vf \"$video_filter\" -c:a aac -b:a 128k"
+            ;;
+        amv|loop_audio)
+            ffmpeg_cmd+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
+            ffmpeg_cmd+=" $ffmpeg_args -vf \"$video_filter\" -map 1:a:0 -c:a aac -b:a 192k"
+            ;;
+        audiofy)
+            ffmpeg_cmd="ffmpeg -loop 1 -framerate 25 -i \"$source\" -i \"$param\""
+            ffmpeg_cmd+=" $ffmpeg_args -vf \"$video_filter\""
+            ffmpeg_cmd+=" -map 0:v -map 1:a -c:a aac -b:a 192k -shortest"
+            ;;
+    esac
+
+    ffmpeg_cmd+=" -y \"$output\""
+
+    echo "$ffmpeg_cmd"
+}
+
+################################################################################
+# MAIN VIDEO PROCESSING
+################################################################################
+process_video() {
+    local source="$1"
+    local operation="$2"
+    local param="$3"
+    local codec="$4"
+    local output_format="$5"
+
+    # Gather video info
+    local video_info
+    video_info=$(get_video_info "$source")
+    local width height duration bitrate filesize
+    read -r width height duration bitrate filesize <<< "$video_info"
+
+    # Calculate new bitrate
+    local new_bitrate
+    new_bitrate=$(calculate_optimal_bitrate "$width" "$height" "$bitrate" "$filesize" "$duration")
+
+    # Build FFmpeg command
+    local cmd
+    cmd=$(build_ffmpeg_command "$source" "$operation" "$param" "$codec" "$output_format" "$new_bitrate")
+    log "INFO" "FFmpeg command: $cmd"
+
+    # Run FFmpeg
+    if ! eval "$cmd" >> "$LOG_FILE" 2>&1; then
         display_error "FFmpeg command failed. Check log file for details."
         exit 1
     fi
 
-    # Check if output file was created and has a non-zero size
+    # Validate output
+    local output="${source%.*}-$(echo $operation | cut -c1,2).${output_format}"  # e.g. myvideo-re.mp4
     if [ ! -s "$output" ]; then
-        display_error "Output file was not created or is empty. Check log file for details."
+        display_error "Output file is empty or missing."
         exit 1
     fi
 
-    # Log output file info
-    local output_info
-    output_info=$(get_video_info "$output")
-    log "INFO" "Output file info: $output_info"
-
-    # If clean option is enabled, move the original file to trash
-    if [ "$clean_mode" = true ]; then
+    # Trash original if requested
+    if [ "$TRASH_MODE" = true ]; then
         move_to_trash "$source"
     fi
 }
 
+################################################################################
+# USAGE
+################################################################################
 usage() {
-    cat <<EOT
-Usage: automat [-v] [-c codec] [-g] [-f format] [-l] [-t] [operation] [source_file] [additional_file]
-
-Process videos with various operations.
-
-Options:
-  -v              Display verbose output and log file information
-  -c codec        Specify codec (h264, hevc, av1) (default: hevc)
-  -g              Use GPU acceleration (if available)
-  -f format       Specify output format (mp4, mkv, webm, mov, m4v) (default: mov)
-  -l              Enable logging (default: disabled)
-  -t              Move original file to trash after successful conversion
+    cat <<EOF
+Usage: $(basename "$0") [OPTIONS] <operation> <source> [additional_file]
 
 Operations:
-  refine        Refine video quality (default bitrate, no audio changes)
-  amv           Replace original audio track in the video with external
-  loop_audio    Loop audio over video
-  audiofy       Combine image or video with a different audio track
+  refine, amv, loop_audio, audiofy
 
-Source File:
-  Path to the source video file. Required for all operations.
-
-Additional File (for amv, loop_audio, and audiofy):
-  Path to the additional audio file. Only required for amv, loop_audio, and audiofy operations.
-
-Example: automat -c hevc -g -f mkv -l -t refine my_video.mp4
-         automat -v -c av1 -f webm -t amv my_video.mp4 background_music.mp3
-
-Example usage within an Automator script (Quick Action, Run Shell Script, Pass input as arguments):
-source ~/.zshrc
-for f in "\$@"; do
-    ~/bin/automat -v -c hevc -g -f mkv -l -t refine "\$f"
-done
-
-Note: This script is intended for advanced users who have a good understanding of video processing and FFmpeg commands.
-EOT
+Options:
+  -v              Verbose logging
+  -c <codec>      Codec: h264, hevc, av1 (default: hevc)
+  -g              Use GPU if available
+  -f <format>     Container: mp4, m4v, mkv, webm, mov (default: mov)
+  -l              Enable logging
+  -t              Trash original file after processing
+EOF
 }
 
+################################################################################
+# ENTRYPOINT
+################################################################################
 main() {
-    local verbose=false
     local codec="hevc"
-    local use_gpu=false
     local output_format="mov"
-    local enable_logging=false
-    local trash_mode=false
 
     while getopts ":vc:gf:lt" opt; do
-        case ${opt} in
-            v )
-                verbose=true
-                ;;
-            c )
-                codec=$OPTARG
-                ;;
-            g )
-                use_gpu=true
-                ;;
-            f )
-                output_format=$OPTARG
-                ;;
-            l )
-                enable_logging=true
-                ;;
-            t )
-                trash_mode=true
-                ;;
+        case "$opt" in
+            v ) ENABLE_LOGGING=true ;;
+            c ) codec=$OPTARG ;;
+            g ) USE_GPU=true ;;
+            f ) output_format=$OPTARG ;;
+            l ) ENABLE_LOGGING=true ;;
+            t ) TRASH_MODE=true ;;
             \? )
-                display_error "Invalid option: $OPTARG"
+                display_error "Invalid option: -$OPTARG"
                 usage
                 exit 1
                 ;;
             : )
-                display_error "Invalid option: $OPTARG requires an argument"
+                display_error "Option -$OPTARG requires an argument."
                 usage
                 exit 1
                 ;;
         esac
     done
-    shift $((OPTIND -1))
+    shift $((OPTIND - 1))
 
     local operation="$1"
     local source="$2"
     local param="$3"
 
-    # Set up logging
-    if [ "$enable_logging" = true ]; then
-        log_file="${source%.*}.log"
-    else
-        log_file="/dev/null"
-    fi
-
-    # Check dependencies
-    check_dependency ffmpeg
-    check_dependency jq
-
-    # Validate input
-    [ -z "$operation" ] && { display_error "Operation not specified"; usage; exit 1; }
-    [ -z "$source" ] && { display_error "Source file not specified"; usage; exit 1; }
-    find_or_die "$source"
+    # Basic checks
+    [ -z "$operation" ] && { display_error "No operation specified."; usage; exit 1; }
+    [ -z "$source" ] && { display_error "No source file specified."; usage; exit 1; }
+    [ ! -f "$source" ] && { display_error "Source file not found: $source"; exit 1; }
 
     case "$operation" in
         refine)
             ;;
         amv|loop_audio|audiofy)
-            [ -z "$param" ] && { display_error "Additional file not specified for $operation operation"; usage; exit 1; }
-            find_or_die "$param"
+            [ -z "$param" ] && { display_error "Additional file not specified for '$operation'."; usage; exit 1; }
+            [ ! -f "$param" ] && { display_error "Additional file not found: $param"; exit 1; }
             ;;
         *)
             display_error "Invalid operation: $operation"
@@ -403,17 +357,12 @@ main() {
             ;;
     esac
 
-    log "INFO" "Starting $operation operation on $source with codec $codec (GPU: $use_gpu) and output format $output_format"
-    process_video "$source" "$operation" "$param" "$codec" "$use_gpu" "$output_format"
-    log "INFO" "Operation completed successfully"
+    log "INFO" "Starting $operation on $source with codec=$codec format=$output_format GPU=$USE_GPU"
+    process_video "$source" "$operation" "$param" "$codec" "$output_format"
+    log "INFO" "Operation completed successfully."
 
-    if [ "$verbose" = true ]; then
-        if [ "$enable_logging" = true ]; then
-            echo "Log file: $log_file"
-            cat "$log_file"
-        else
-            echo "Logging is disabled. Use -l option to enable logging."
-        fi
+    if [ "$ENABLE_LOGGING" = true ]; then
+        echo "Log file is at $LOG_FILE"
     fi
 }
 
