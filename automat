@@ -153,44 +153,56 @@ get_video_info() {
 calculate_optimal_bitrate() {
     local width="$1"
     local height="$2"
-    local current_bitrate="$3"
-    local filesize="$4"
-    local duration="$5"
+    local current_bitrate="$3"   # bits/s from ffprobe
+    local filesize="$4"          # bytes
+    local duration="$5"          # seconds
 
+    # 1) Lower baseline bitrates for each resolution tier.
     local pixels=$((width * height))
-    local new_bitrate
-
-    # Basic resolution thresholds
-    if [ "$pixels" -gt 2073600 ]; then
-        new_bitrate=5000000     # for 1080p+
-    elif [ "$pixels" -gt 921600 ]; then
-        new_bitrate=3000000     # for 720p
+    local base_bitrate
+    if [ "$pixels" -ge 8294400 ]; then   # ~ UHD 4K (3840x2160)
+        base_bitrate=6000000      # 6 Mbps
+    elif [ "$pixels" -gt 2073600 ]; then # 1080p
+        base_bitrate=4000000      # 4 Mbps
+    elif [ "$pixels" -gt 921600 ]; then  # 720p
+        base_bitrate=2500000      # 2.5 Mbps
     else
-        new_bitrate=1500000     # for lower resolutions
+        base_bitrate=1200000      # 1.2 Mbps for lower resolutions
     fi
 
-    # If current is lower, use it
-    if [ "$current_bitrate" -ne 0 ] && [ "$current_bitrate" -lt "$new_bitrate" ]; then
-        new_bitrate=$current_bitrate
+    # 2) If the current bitrate is lower than base, prefer the smaller one.
+    local chosen_bitrate="$base_bitrate"
+    if [ "$current_bitrate" -ne 0 ] && [ "$current_bitrate" -lt "$base_bitrate" ]; then
+        chosen_bitrate="$current_bitrate"
     fi
 
-    # Further reduce based on filesize and duration
+    # 3) File-size-based approach:
+    #    - Calculate actual average from filesize
+    #    - Use a "reduce_factor" to shrink further if it’s clearly bloated
     if [ "$duration" != "0" ]; then
+        local actual_bitrate_from_filesize
+        actual_bitrate_from_filesize=$((filesize * 8 / duration))   # bits/s
+
+        # More aggressive shrink:
+        local reduce_factor=0.80
+
         local target_bitrate
-        target_bitrate=$(awk -v fs="$filesize" -v dur="$duration" 'BEGIN { printf "%d", fs * 8 * 80 / (dur * 100) }')
-        if [ "$target_bitrate" -lt "$new_bitrate" ]; then
-            new_bitrate=$target_bitrate
+        target_bitrate=$(awk -v ab="$actual_bitrate_from_filesize" -v rf="$reduce_factor" \
+            'BEGIN { printf "%d", ab * rf }')
+
+        if [ "$target_bitrate" -lt "$chosen_bitrate" ] && [ "$target_bitrate" -gt 0 ]; then
+            chosen_bitrate="$target_bitrate"
         fi
     fi
 
-    # Minimum
-    [ "$new_bitrate" -lt 100000 ] && new_bitrate=100000
+    # 4) Floor at 100 kb/s (100000 bits/s)
+    [ "$chosen_bitrate" -lt 100000 ] && chosen_bitrate=100000
 
-    # Round to nearest 100k
-    new_bitrate=$(((new_bitrate + 50000) / 100000 * 100000))
+    # 5) Round to nearest 100k bits
+    chosen_bitrate=$(((chosen_bitrate + 50000) / 100000 * 100000))
 
-    log "INFO" "Calculated optimal bitrate: $new_bitrate"
-    echo "$new_bitrate"
+    log "INFO" "Calculated optimal bitrate: $chosen_bitrate (bits/s)"
+    echo "$chosen_bitrate"
 }
 
 ################################################################################
@@ -202,32 +214,29 @@ build_ffmpeg_command() {
     local param="$3"
     local codec="$4"
     local output_format="$5"
-    local new_bitrate="$6"
+    local new_bitrate="$6"  # in bits/second
     local thread_count=8
 
+    # Common video filter (round resolution to even)
     local video_filter="scale=trunc(iw/2)*2:trunc(ih/2)*2"
-    local ffmpeg_args="-maxrate $new_bitrate -bufsize $((new_bitrate * 2))"
-    ffmpeg_args+=" -threads $thread_count -movflags +faststart -pix_fmt yuv420p"
 
+    # We'll separate input-specific and output-specific options for clarity.
+    local ffmpeg_input_opts="-hwaccel videotoolbox"         # Must go BEFORE -i
+    local ffmpeg_output_opts="-threads $thread_count -movflags +faststart -pix_fmt yuv420p"
+
+    # Convert from bits to kilobits (e.g. 3,000,000 → 3000k)
+    local kbps=$(( new_bitrate / 1024 ))
+
+    # Pick codec logic
     case "$codec" in
         h264)
-            if [ "$USE_GPU" = true ] && command -v nvidia-smi &>/dev/null; then
-                ffmpeg_args="-c:v h264_nvenc -preset slow -rc:v vbr_hq $ffmpeg_args"
-                video_filter="scale_npp=w=trunc(iw/2)*2:h=trunc(ih/2)*2"
-            else
-                ffmpeg_args="-c:v libx264 -preset slower -crf 23 -profile:v high -level:v 4.2 $ffmpeg_args"
-            fi
+            ffmpeg_output_opts+=" -c:v h264_videotoolbox -b:v ${kbps}k -tag:v avc1"
             ;;
         hevc)
-            if [ "$USE_GPU" = true ] && command -v nvidia-smi &>/dev/null; then
-                ffmpeg_args="-c:v hevc_nvenc -preset slow -rc:v vbr_hq $ffmpeg_args"
-                video_filter="scale_npp=w=trunc(iw/2)*2:h=trunc(ih/2)*2"
-            else
-                ffmpeg_args="-c:v libx265 -preset medium -crf 28 -tag:v hvc1 -profile:v main $ffmpeg_args"
-            fi
+            ffmpeg_output_opts+=" -c:v hevc_videotoolbox -b:v ${kbps}k -tag:v hvc1"
             ;;
         av1)
-            ffmpeg_args="-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental $ffmpeg_args"
+            ffmpeg_output_opts+=" -c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
             ;;
         *)
             display_error "Invalid codec: $codec"
@@ -235,21 +244,24 @@ build_ffmpeg_command() {
             ;;
     esac
 
-    # Format-specific
+    # Container / format handling
     case "$output_format" in
         mp4|m4v)
+            # nothing special
             ;;
         mkv)
-            ffmpeg_args="$ffmpeg_args -f matroska"
+            ffmpeg_output_opts+=" -f matroska"
             ;;
         webm)
             if [ "$codec" != "av1" ]; then
-                ffmpeg_args="-c:v libvpx-vp9 -crf 30 -b:v 0 -f webm"
+                # If user picks webm + h264 or hevc, override with VP9
+                ffmpeg_output_opts="-c:v libvpx-vp9 -crf 30 -b:v 0 -f webm"
             else
-                ffmpeg_args="$ffmpeg_args -f webm"
+                ffmpeg_output_opts+=" -f webm"
             fi
             ;;
         mov)
+            # nothing special
             ;;
         *)
             display_error "Invalid output format: $output_format"
@@ -257,26 +269,44 @@ build_ffmpeg_command() {
             ;;
     esac
 
+    # Final output name
     local output="${source%.*}${SUFFIX}.${output_format}"
 
-    local ffmpeg_cmd="ffmpeg -i \"$source\""
+    #
+    # Build the FFmpeg command step by step
+    #
+    
+    # 1) Base command with input options BEFORE -i
+    local ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -i \"$source\""
 
     case "$operation" in
         refine)
-            ffmpeg_cmd+=" $ffmpeg_args -vf \"$video_filter\" -c:a aac -b:a 128k"
+            # single-input usage
+            ffmpeg_cmd+=" $ffmpeg_output_opts -vf \"$video_filter\" -c:a aac -b:a 128k"
             ;;
         amv|loop_audio)
-            ffmpeg_cmd+=" -stream_loop -1 -i \"$param\" -shortest -map 0:v:0"
-            ffmpeg_cmd+=" $ffmpeg_args -vf \"$video_filter\" -map 1:a:0 -c:a aac -b:a 192k"
+            # For these, we have a second input (audio?), but we only need hardware decode for the first input’s video
+            # so it’s fine if we do:  -i "$source"  -i "$param"
+            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -i \"$source\" -i \"$param\""
+            ffmpeg_cmd+=" -shortest -map 0:v:0 -map 1:a:0"
+            ffmpeg_cmd+=" $ffmpeg_output_opts -vf \"$video_filter\" -c:a aac -b:a 192k"
             ;;
         audiofy)
-            ffmpeg_cmd="ffmpeg -loop 1 -framerate 25 -i \"$source\" -i \"$param\""
-            ffmpeg_cmd+=" $ffmpeg_args -vf \"$video_filter\""
+            # For audiofy, we have a looping image or something similar
+            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -loop 1 -framerate 25 -i \"$source\" -i \"$param\""
+            ffmpeg_cmd+=" $ffmpeg_output_opts -vf \"$video_filter\""
             ffmpeg_cmd+=" -map 0:v -map 1:a -c:a aac -b:a 192k -shortest"
+            ;;
+        *)
+            display_error "Invalid operation: $operation"
+            exit 1
             ;;
     esac
 
+    # 2) Finally, add overwrite + output file
     ffmpeg_cmd+=" -y \"$output\""
+
+    # Return the whole command
     echo "$ffmpeg_cmd"
 }
 
