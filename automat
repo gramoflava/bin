@@ -401,6 +401,22 @@ Options:
   -f <format>     Video container: mp4, m4v, mkv, webm, mov (default: mov)
   -l              Enable logging
   -t              Trash original file after processing
+
+Examples:
+    $(basename "$0") refine video.mp4
+    $(basename "$0") -c h264 refine video.mp4
+    $(basename "$0") -v -c h264 -f mkv refine video.mp4
+    $(basename "$0") refine /path/to/videos/
+    $(basename "$0") amv video.mp4 audio.mp3
+    $(basename "$0") loop_audio video.mp4 audio.mp3
+    $(basename "$0") audiofy image.jpg audio.mp3
+
+Automator example (for Finder right-click):
+    source ~/.zshrc
+    for f in "\$@"; do
+        ~/bin/$(basename "$0") -t refine "\$f"
+    done
+
 EOF
 }
 
