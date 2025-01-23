@@ -387,7 +387,7 @@ process_image() {
 ################################################################################
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [OPTIONS] <operation> <source> [additional_file]
+Usage: automat [OPTIONS] <operation> <source> [additional_file]
 
 Operations:
   refine, amv, loop_audio, audiofy
@@ -403,18 +403,18 @@ Options:
   -t              Trash original file after processing
 
 Examples:
-    $(basename "$0") refine video.mp4
-    $(basename "$0") -c h264 refine video.mp4
-    $(basename "$0") -v -c h264 -f mkv refine video.mp4
-    $(basename "$0") refine /path/to/videos/
-    $(basename "$0") amv video.mp4 audio.mp3
-    $(basename "$0") loop_audio video.mp4 audio.mp3
-    $(basename "$0") audiofy image.jpg audio.mp3
+    automat refine video.mp4
+    automat -c h264 refine video.mp4
+    automat -v -c h264 -f mkv refine video.mp4
+    automat refine /path/to/videos/
+    automat amv video.mp4 audio.mp3
+    automat loop_audio video.mp4 audio.mp3
+    automat audiofy image.jpg audio.mp3
 
 Automator example (for Finder right-click):
     source ~/.zshrc
     for f in "\$@"; do
-        ~/bin/$(basename "$0") -t refine "\$f"
+        ~/bin/automat -t refine "\$f"
     done
 
 EOF
