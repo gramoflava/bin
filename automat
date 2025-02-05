@@ -37,7 +37,7 @@ is_video_file() {
     ext="$(echo "$ext" | tr '[:upper:]' '[:lower:]')"
 
     case "$ext" in
-        mp4|m4v|mov|mkv|webm|avi|flv )
+        mp4|m4v|mov|mkv|webm|avi|flv|wmv|mpg|mpeg|3gp|ogv|ts|vob|hevc|av1 )
             return 0
             ;;
         *)
@@ -87,7 +87,7 @@ refine_recursive() {
             process_image "$item"
         fi
     done < <(find "$dir" -type f \
-             -not -iname "*${SUFFIX}*" \
+             -not -iname "*${SUFFIX}.*" \
              -print0)
 }
 
