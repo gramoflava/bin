@@ -1,5 +1,4 @@
 #!/bin/zsh
-set -e
 
 ################################################################################
 # GLOBAL SETTINGS & ERROR HANDLING
@@ -71,20 +70,19 @@ refine_recursive() {
     local dir="$1"
     log "INFO" "Recursively refining all video/image files in directory: $dir"
 
-    # Use 'find' to walk through subdirectories:
-    #  -type f => only files
-    #  -print0 => separate filenames with null char
-    #  We skip anything that has '$SUFFIX' in the name (-not -iname "*-re*")
-    #  Adjust the pattern if you want a stricter match, e.g. "*${SUFFIX}.*"
     while IFS= read -r -d $'\0' item; do
-        # If recognized video, process
         if is_video_file "$item"; then
             log "INFO" "Refining video: $item"
-            process_video "$item" "refine" "" "$CODEC" "$OUTPUT_FORMAT"
-        # If recognized image, process
+            if ! process_video "$item" "refine" "" "$CODEC" "$OUTPUT_FORMAT"; then
+                display_error "Skipping $item due to error."
+                continue
+            fi
         elif is_image_file "$item"; then
             log "INFO" "Refining image: $item"
-            process_image "$item"
+            if ! process_image "$item"; then
+                display_error "Skipping $item due to error."
+                continue
+            fi
         fi
     done < <(find "$dir" -type f \
              -not -iname "*${SUFFIX}.*" \
@@ -102,9 +100,8 @@ move_to_trash() {
     fi
 
     local absolute_path
-absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
+    absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
 
-    # More reliable approach to move to trash:
     osascript <<EOF
         try
             tell application "Finder"
@@ -112,12 +109,14 @@ absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
             end tell
         on error errMsg number errNum
             do shell script "echo 'Error: " & errMsg & " (Error Number: " & errNum & ")' >&2"
+            return 1
         end try
 EOF
 
     if [ $? -eq 0 ]; then
         log "INFO" "Moved file to trash: $file"
         echo "Moved file to trash: $file"
+        return 0
     else
         display_error "Failed to move file to trash: $file"
         return 1
@@ -146,7 +145,6 @@ get_video_info() {
     bitrate=${bitrate:-0}
 
     log "INFO" "Video info for '$source' => Width: $width, Height: $height, Duration: $duration, Bitrate: $bitrate, Filesize: $filesize"
-
     echo "$width $height $duration $bitrate $filesize"
 }
 
@@ -160,32 +158,26 @@ calculate_optimal_bitrate() {
     # 1) Lower baseline bitrates for each resolution tier.
     local pixels=$((width * height))
     local base_bitrate
-    if [ "$pixels" -ge 8294400 ]; then   # ~ UHD 4K (3840x2160)
-        base_bitrate=6000000      # 6 Mbps
-    elif [ "$pixels" -gt 2073600 ]; then # 1080p
-        base_bitrate=4000000      # 4 Mbps
-    elif [ "$pixels" -gt 921600 ]; then  # 720p
-        base_bitrate=2500000      # 2.5 Mbps
+    if [ "$pixels" -ge 8294400 ]; then   # ~ 4K
+        base_bitrate=6000000   # 6 Mbps
+    elif [ "$pixels" -gt 2073600 ]; then # ~ 1080p
+        base_bitrate=4000000   # 4 Mbps
+    elif [ "$pixels" -gt 921600 ]; then  # ~ 720p
+        base_bitrate=2500000   # 2.5 Mbps
     else
-        base_bitrate=1200000      # 1.2 Mbps for lower resolutions
+        base_bitrate=1200000   # 1.2 Mbps
     fi
 
-    # 2) If the current bitrate is lower than base, prefer the smaller one.
+    # 2) If current bitrate is lower than base, prefer that smaller one.
     local chosen_bitrate="$base_bitrate"
     if [ "$current_bitrate" -ne 0 ] && [ "$current_bitrate" -lt "$base_bitrate" ]; then
         chosen_bitrate="$current_bitrate"
     fi
 
     # 3) File-size-based approach:
-    #    - Calculate actual average from filesize
-    #    - Use a "reduce_factor" to shrink further if it’s clearly bloated
     if [ "$duration" != "0" ]; then
-        local actual_bitrate_from_filesize
-        actual_bitrate_from_filesize=$((filesize * 8 / duration))   # bits/s
-
-        # More aggressive shrink:
+        local actual_bitrate_from_filesize=$((filesize * 8 / duration)) # bits/s
         local reduce_factor=0.80
-
         local target_bitrate
         target_bitrate=$(awk -v ab="$actual_bitrate_from_filesize" -v rf="$reduce_factor" \
             'BEGIN { printf "%d", ab * rf }')
@@ -195,10 +187,10 @@ calculate_optimal_bitrate() {
         fi
     fi
 
-    # 4) Floor at 100 kb/s (100000 bits/s)
+    # Floor at 100 kb/s (100000 bits/s)
     [ "$chosen_bitrate" -lt 100000 ] && chosen_bitrate=100000
 
-    # 5) Round to nearest 100k bits
+    # Round to nearest 100k bits
     chosen_bitrate=$(((chosen_bitrate + 50000) / 100000 * 100000))
 
     log "INFO" "Calculated optimal bitrate: $chosen_bitrate (bits/s)"
@@ -214,20 +206,19 @@ build_ffmpeg_command() {
     local param="$3"
     local codec="$4"
     local output_format="$5"
-    local new_bitrate="$6"  # in bits/second
+    local new_bitrate="$6"  # bits/s
     local thread_count=8
 
-    # Common video filter (round resolution to even)
+    # Common video filter
     local video_filter="scale=trunc(iw/2)*2:trunc(ih/2)*2"
 
-    # We'll separate input-specific and output-specific options for clarity.
-    local ffmpeg_input_opts="-hwaccel videotoolbox"         # Must go BEFORE -i
+    local ffmpeg_input_opts="-hwaccel videotoolbox"
     local ffmpeg_output_opts="-threads $thread_count -movflags +faststart -pix_fmt yuv420p"
 
-    # Convert from bits to kilobits (e.g. 3,000,000 → 3000k)
+    # Convert bits/s to kbps
     local kbps=$(( new_bitrate / 1024 ))
 
-    # Pick codec logic
+    # Codec logic
     case "$codec" in
         h264)
             ffmpeg_output_opts+=" -c:v h264_videotoolbox -b:v ${kbps}k -tag:v avc1"
@@ -240,14 +231,14 @@ build_ffmpeg_command() {
             ;;
         *)
             display_error "Invalid codec: $codec"
-            exit 1
+            return 1
             ;;
     esac
 
-    # Container / format handling
+    # Container / format
     case "$output_format" in
         mp4|m4v)
-            # nothing special
+            # no special flags needed
             ;;
         mkv)
             ffmpeg_output_opts+=" -f matroska"
@@ -261,52 +252,37 @@ build_ffmpeg_command() {
             fi
             ;;
         mov)
-            # nothing special
+            # no special flags needed
             ;;
         *)
             display_error "Invalid output format: $output_format"
-            exit 1
+            return 1
             ;;
     esac
 
-    # Final output name
     local output="${source%.*}${SUFFIX}.${output_format}"
 
-    #
-    # Build the FFmpeg command step by step
-    #
-    
-    # 1) Base command with input options BEFORE -i
-    local ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -i \"$source\""
-
+    local ffmpeg_cmd=""
     case "$operation" in
         refine)
-            # single-input usage
-            ffmpeg_cmd+=" $ffmpeg_output_opts -vf \"$video_filter\" -c:a aac -b:a 128k"
+            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -i \"$source\" $ffmpeg_output_opts -vf \"$video_filter\" -c:a aac -b:a 128k -y \"$output\""
             ;;
         amv|loop_audio)
-            # For these, we have a second input (audio?), but we only need hardware decode for the first input’s video
-            # so it’s fine if we do:  -i "$source"  -i "$param"
-            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -i \"$source\" -i \"$param\""
-            ffmpeg_cmd+=" -shortest -map 0:v:0 -map 1:a:0"
-            ffmpeg_cmd+=" $ffmpeg_output_opts -vf \"$video_filter\" -c:a aac -b:a 192k"
+            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -i \"$source\" -i \"$param\" \
+                -shortest -map 0:v:0 -map 1:a:0 \
+                $ffmpeg_output_opts -vf \"$video_filter\" -c:a aac -b:a 192k -y \"$output\""
             ;;
         audiofy)
-            # For audiofy, we have a looping image or something similar
-            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -loop 1 -framerate 25 -i \"$source\" -i \"$param\""
-            ffmpeg_cmd+=" $ffmpeg_output_opts -vf \"$video_filter\""
-            ffmpeg_cmd+=" -map 0:v -map 1:a -c:a aac -b:a 192k -shortest"
+            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -loop 1 -framerate 25 -i \"$source\" -i \"$param\" \
+                $ffmpeg_output_opts -vf \"$video_filter\" \
+                -map 0:v -map 1:a -c:a aac -b:a 192k -shortest -y \"$output\""
             ;;
         *)
             display_error "Invalid operation: $operation"
-            exit 1
+            return 1
             ;;
     esac
 
-    # 2) Finally, add overwrite + output file
-    ffmpeg_cmd+=" -y \"$output\""
-
-    # Return the whole command
     echo "$ffmpeg_cmd"
 }
 
@@ -332,26 +308,33 @@ process_video() {
 
     # Build FFmpeg command
     local cmd
-    cmd=$(build_ffmpeg_command "$source" "$operation" "$param" "$codec" "$output_format" "$new_bitrate")
+    cmd=$(build_ffmpeg_command "$source" "$operation" "$param" "$codec" "$output_format" "$new_bitrate") || {
+        display_error "FFmpeg command construction failed."
+        return 1
+    }
     log "INFO" "FFmpeg command: $cmd"
 
     # Run FFmpeg
     if ! eval "$cmd" >> "$LOG_FILE" 2>&1; then
         display_error "FFmpeg command failed. Check log file for details."
-        exit 1
+        return 1
     fi
 
     # Validate output
     local output="${source%.*}${SUFFIX}.${output_format}"
     if [ ! -s "$output" ]; then
         display_error "Output file is empty or missing."
-        exit 1
+        return 1
     fi
 
     # Trash original if requested
     if [ "$TRASH_MODE" = true ]; then
-        move_to_trash "$source"
+        move_to_trash "$source" || {
+            display_error "Failed to trash original file: $source"
+        }
     fi
+
+    return 0
 }
 
 ################################################################################
@@ -362,24 +345,25 @@ process_image() {
     local output="${source%.*}${SUFFIX}.heic"
 
     local cmd="sips -s format heic \"$source\" --out \"$output\""
-
     log "INFO" "Image refine command: $cmd"
 
     if ! eval "$cmd" >> "$LOG_FILE" 2>&1; then
         display_error "Image refine command failed. Check log file for details."
-        exit 1
+        return 1
     fi
 
-    # Validate output
     if [ ! -s "$output" ]; then
         display_error "HEIC output file is empty or missing."
-        exit 1
+        return 1
     fi
 
-    # Optionally trash original if requested
     if [ "$TRASH_MODE" = true ]; then
-        move_to_trash "$source"
+        move_to_trash "$source" || {
+            display_error "Failed to trash original image: $source"
+        }
     fi
+
+    return 0
 }
 
 ################################################################################
@@ -453,29 +437,28 @@ main() {
     local source="$2"
     local param="$3"
 
-    # Basic checks
     [ -z "$operation" ] && { display_error "No operation specified."; usage; exit 1; }
     [ -z "$source" ] && { display_error "No source file specified."; usage; exit 1; }
 
-    # Expose global variables so refine_batch() can see them
     CODEC="$codec"
     OUTPUT_FORMAT="$output_format"
 
     case "$operation" in
         refine)
             if [ -d "$source" ]; then
-                # Recursively process all subdirectories
+                # Directory mode => continue on errors
                 refine_recursive "$source"
             else
-                # Single-file refine
+                # Single-file refine => exit on error
                 [ ! -f "$source" ] && {
                     display_error "Source file not found: $source"
                     exit 1
                 }
+
                 if is_video_file "$source"; then
-                    process_video "$source" "$operation" "$param" "$codec" "$output_format"
+                    process_video "$source" "$operation" "$param" "$codec" "$output_format" || exit 1
                 elif is_image_file "$source"; then
-                    process_image "$source"
+                    process_image "$source" || exit 1
                 else
                     display_error "Unsupported file type for refine: $source"
                     exit 1
@@ -483,10 +466,21 @@ main() {
             fi
             ;;
         amv|loop_audio|audiofy)
-            [ -z "$param" ] && { display_error "Additional file not specified for '$operation'."; usage; exit 1; }
-            [ ! -f "$param" ] && { display_error "Additional file not found: $param"; exit 1; }
-            [ ! -f "$source" ] && { display_error "Source file not found: $source"; exit 1; }
-            process_video "$source" "$operation" "$param" "$codec" "$output_format"
+            [ -z "$param" ] && {
+                display_error "Additional file not specified for '$operation'."
+                usage
+                exit 1
+            }
+            [ ! -f "$param" ] && {
+                display_error "Additional file not found: $param"
+                exit 1
+            }
+            [ ! -f "$source" ] && {
+                display_error "Source file not found: $source"
+                exit 1
+            }
+            # Single-file or single + extra file scenario => exit on error
+            process_video "$source" "$operation" "$param" "$codec" "$output_format" || exit 1
             ;;
         *)
             display_error "Invalid operation: $operation"
