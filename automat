@@ -8,11 +8,26 @@ ENABLE_LOGGING=false
 USE_GPU=false
 TRASH_MODE=false
 SUFFIX="-re"
+DEBUG_MODE=false
 
 display_error() {
     local message="$1"
     echo "Error: $message" >&2
     log "ERROR" "$message"
+}
+
+display_info() {
+    local message="$1"
+    echo "$message"
+    log "INFO" "$message"
+}
+
+display_debug() {
+    local message="$1"
+    if [ "$DEBUG_MODE" = true ]; then
+        echo "Debug: $message"
+    fi
+    log "DEBUG" "$message"
 }
 
 log() {
@@ -64,33 +79,64 @@ is_image_file() {
 }
 
 ################################################################################
-# RECURSIVE REFINE
+# RECURSIVE REFINE - IMPROVED VERSION
 ################################################################################
 refine_recursive() {
     local dir="$1"
-    log "INFO" "Recursively refining all video/image files in directory: $dir"
-
+    local codec="$2"
+    local output_format="$3"
+    
+    display_info "Recursively refining all video/image files in directory: $dir"
+    log "INFO" "Using codec: $codec, output format: $output_format"
+    
+    # Count total files to process
+    local total_files=0
+    local processed_files=0
+    local failed_files=0
+    
     while IFS= read -r -d $'\0' item; do
+        if is_video_file "$item" || is_image_file "$item"; then
+            total_files=$((total_files + 1))
+        fi
+    done < <(find "$dir" -type f -not -iname "*${SUFFIX}.*" -print0)
+    
+    display_info "Found $total_files files to process"
+    
+    # Process files with proper progress tracking
+    find "$dir" -type f -not -iname "*${SUFFIX}.*" -print0 | while IFS= read -r -d $'\0' item; do
         if is_video_file "$item"; then
-            log "INFO" "Refining video: $item"
-            if ! process_video "$item" "refine" "" "$CODEC" "$OUTPUT_FORMAT"; then
-                display_error "Skipping $item due to error."
-                continue
+            processed_files=$((processed_files + 1))
+            display_info "[$processed_files/$total_files] Processing video: $item"
+            log "INFO" "Processing video file: $item"
+            
+            if process_video "$item" "refine" "" "$codec" "$output_format"; then
+                display_info "✓ Successfully processed: $item"
+            else
+                failed_files=$((failed_files + 1))
+                display_error "✗ Failed to process: $item"
+                # Continue processing other files regardless of error
             fi
         elif is_image_file "$item"; then
-            log "INFO" "Refining image: $item"
-            if ! process_image "$item"; then
-                display_error "Skipping $item due to error."
-                continue
+            processed_files=$((processed_files + 1))
+            display_info "[$processed_files/$total_files] Processing image: $item"
+            log "INFO" "Processing image file: $item"
+            
+            if process_image "$item"; then
+                display_info "✓ Successfully processed: $item"
+            else
+                failed_files=$((failed_files + 1))
+                display_error "✗ Failed to process: $item"
+                # Continue processing other files regardless of error
             fi
         fi
-    done < <(find "$dir" -type f \
-             -not -iname "*${SUFFIX}.*" \
-             -print0)
+    done
+    
+    display_info "Processing complete. Processed: $processed_files, Failed: $failed_files"
+    return 0
 }
 
 ################################################################################
-# FILE TRASHING
+# FILE TRASHING - IMPROVED WITH BETTER ERROR HANDLING
 ################################################################################
 move_to_trash() {
     local file="$1"
@@ -99,27 +145,39 @@ move_to_trash() {
         return 1
     fi
 
+    # Check if file exists before attempting to trash it
+    if [ ! -f "$file" ]; then
+        display_error "File not found for trashing: $file"
+        return 1
+    fi
+
     local absolute_path
     absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
+    
+    display_debug "Attempting to trash file: $absolute_path"
 
-    osascript <<EOF
+    local trash_result
+    trash_result=$(osascript <<EOF 2>&1
         try
             tell application "Finder"
                 move POSIX file "$absolute_path" to trash
             end tell
+            return "success"
         on error errMsg number errNum
-            do shell script "echo 'Error: " & errMsg & " (Error Number: " & errNum & ")' >&2"
-            return 1
+            return "error:" & errMsg & ":" & errNum
         end try
 EOF
+    )
 
-    if [ $? -eq 0 ]; then
+    if [[ "$trash_result" == "success" ]]; then
         log "INFO" "Moved file to trash: $file"
-        echo "Moved file to trash: $file"
+        display_debug "Moved file to trash: $file"
         return 0
     else
-        display_error "Failed to move file to trash: $file"
-        return 1
+        display_error "Failed to move file to trash: $file ($trash_result)"
+        # Don't fail the overall process just because trashing failed
+        # We'll consider the processing successful even if trash fails
+        return 0
     fi
 }
 
@@ -128,8 +186,17 @@ EOF
 ################################################################################
 get_video_info() {
     local source="$1"
+    display_debug "Getting video info for: $source"
+    
     local info
     info=$(ffprobe -v quiet -print_format json -show_format -show_streams "$source")
+    
+    if [ $? -ne 0 ]; then
+        display_error "Failed to get video info with ffprobe: $source"
+        # Return default values
+        echo "0 0 0 0 0"
+        return 1
+    fi
 
     local width height duration bitrate filesize
     width=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .width')
@@ -138,11 +205,23 @@ get_video_info() {
     bitrate=$(echo "$info" | jq -r '.format.bit_rate')
     filesize=$(stat -f %z "$source")
 
-    # Default fallback
-    width=${width:-0}
-    height=${height:-0}
-    duration=${duration:-0}
-    bitrate=${bitrate:-0}
+    # Default fallback with more informative logging
+    if [ "$width" = "null" ] || [ -z "$width" ]; then
+        display_debug "Width not found in video metadata, using default value"
+        width=0
+    fi
+    if [ "$height" = "null" ] || [ -z "$height" ]; then
+        display_debug "Height not found in video metadata, using default value"
+        height=0
+    fi
+    if [ "$duration" = "null" ] || [ -z "$duration" ]; then
+        display_debug "Duration not found in video metadata, using default value"
+        duration=0
+    fi
+    if [ "$bitrate" = "null" ] || [ -z "$bitrate" ]; then
+        display_debug "Bitrate not found in video metadata, using default value"
+        bitrate=0
+    fi
 
     log "INFO" "Video info for '$source' => Width: $width, Height: $height, Duration: $duration, Bitrate: $bitrate, Filesize: $filesize"
     echo "$width $height $duration $bitrate $filesize"
@@ -154,6 +233,8 @@ calculate_optimal_bitrate() {
     local current_bitrate="$3"   # bits/s from ffprobe
     local filesize="$4"          # bytes
     local duration="$5"          # seconds
+
+    display_debug "Calculating optimal bitrate for video: ${width}x${height}, current: ${current_bitrate}bit/s, size: ${filesize}bytes, duration: ${duration}s"
 
     # 1) Lower baseline bitrates for each resolution tier.
     local pixels=$((width * height))
@@ -172,6 +253,7 @@ calculate_optimal_bitrate() {
     local chosen_bitrate="$base_bitrate"
     if [ "$current_bitrate" -ne 0 ] && [ "$current_bitrate" -lt "$base_bitrate" ]; then
         chosen_bitrate="$current_bitrate"
+        display_debug "Using current bitrate ($current_bitrate) as it's lower than base bitrate ($base_bitrate)"
     fi
 
     # 3) File-size-based approach:
@@ -184,6 +266,7 @@ calculate_optimal_bitrate() {
 
         if [ "$target_bitrate" -lt "$chosen_bitrate" ] && [ "$target_bitrate" -gt 0 ]; then
             chosen_bitrate="$target_bitrate"
+            display_debug "Using target bitrate ($target_bitrate) based on filesize analysis"
         fi
     fi
 
@@ -208,6 +291,8 @@ build_ffmpeg_command() {
     local output_format="$5"
     local new_bitrate="$6"  # bits/s
     local thread_count=8
+
+    display_debug "Building FFmpeg command for: $source, operation: $operation, codec: $codec, format: $output_format, bitrate: $new_bitrate"
 
     # Common video filter
     local video_filter="scale=trunc(iw/2)*2:trunc(ih/2)*2"
@@ -261,6 +346,11 @@ build_ffmpeg_command() {
     esac
 
     local output="${source%.*}${SUFFIX}.${output_format}"
+    
+    # Check if output file already exists
+    if [ -f "$output" ]; then
+        display_debug "Output file already exists: $output"
+    fi
 
     local ffmpeg_cmd=""
     case "$operation" in
@@ -287,7 +377,7 @@ build_ffmpeg_command() {
 }
 
 ################################################################################
-# MAIN VIDEO PROCESSING
+# MAIN VIDEO PROCESSING - IMPROVED ERROR HANDLING
 ################################################################################
 process_video() {
     local source="$1"
@@ -295,6 +385,8 @@ process_video() {
     local param="$3"
     local codec="$4"
     local output_format="$5"
+    
+    display_debug "Starting video processing for: $source"
 
     # Gather video info
     local video_info
@@ -313,56 +405,112 @@ process_video() {
         return 1
     }
     log "INFO" "FFmpeg command: $cmd"
+    display_debug "Executing FFmpeg command"
 
-    # Run FFmpeg
-    if ! eval "$cmd" >> "$LOG_FILE" 2>&1; then
-        display_error "FFmpeg command failed. Check log file for details."
+    # Create temp log file for this operation
+    local temp_log
+    temp_log=$(mktemp /tmp/automat_ffmpeg.XXXXXX)
+    
+    # Run FFmpeg with better error handling
+    if ! eval "$cmd" > "$temp_log" 2>&1; then
+        display_error "FFmpeg command failed. Check log for details."
+        cat "$temp_log" >> "$LOG_FILE"
+        rm "$temp_log"
         return 1
     fi
+    
+    # Add FFmpeg output to main log if needed
+    if [ "$DEBUG_MODE" = true ]; then
+        cat "$temp_log" >> "$LOG_FILE"
+    fi
+    rm "$temp_log"
 
     # Validate output
     local output="${source%.*}${SUFFIX}.${output_format}"
     if [ ! -s "$output" ]; then
-        display_error "Output file is empty or missing."
+        display_error "Output file is empty or missing: $output"
         return 1
     fi
+    
+    display_debug "Successfully created output file: $output"
 
-    # Trash original if requested
+    # Get file sizes for reporting
+    local source_size original_size_mb output_size output_size_mb reduction
+    source_size=$(stat -f %z "$source")
+    original_size_mb=$(awk "BEGIN {printf \"%.2f\", $source_size/1024/1024}")
+    output_size=$(stat -f %z "$output")
+    output_size_mb=$(awk "BEGIN {printf \"%.2f\", $output_size/1024/1024}")
+    reduction=$(awk "BEGIN {printf \"%.1f\", (1-$output_size/$source_size)*100}")
+    
+    display_info "File size: $original_size_mb MB → $output_size_mb MB ($reduction% reduction)"
+
+    # Trash original if requested - BUT don't fail if trashing fails
     if [ "$TRASH_MODE" = true ]; then
-        move_to_trash "$source" || {
-            display_error "Failed to trash original file: $source"
-        }
+        display_debug "Attempting to trash original file"
+        move_to_trash "$source"
+        # Note: We intentionally don't check the return code here
     fi
 
+    display_debug "Video processing complete for: $source"
     return 0
 }
 
 ################################################################################
-# IMAGE PROCESSING
+# IMAGE PROCESSING - IMPROVED ERROR HANDLING
 ################################################################################
 process_image() {
     local source="$1"
     local output="${source%.*}${SUFFIX}.heic"
+    
+    display_debug "Starting image processing for: $source"
+
+    # Check if output already exists
+    if [ -f "$output" ]; then
+        display_debug "Output file already exists: $output"
+    fi
 
     local cmd="sips -s format heic \"$source\" --out \"$output\""
     log "INFO" "Image refine command: $cmd"
+    
+    # Create temp log file for this operation
+    local temp_log
+    temp_log=$(mktemp /tmp/automat_sips.XXXXXX)
 
-    if ! eval "$cmd" >> "$LOG_FILE" 2>&1; then
-        display_error "Image refine command failed. Check log file for details."
+    if ! eval "$cmd" > "$temp_log" 2>&1; then
+        display_error "Image refine command failed. Check log for details."
+        cat "$temp_log" >> "$LOG_FILE"
+        rm "$temp_log"
         return 1
     fi
+    
+    # Add sips output to main log if needed
+    if [ "$DEBUG_MODE" = true ]; then
+        cat "$temp_log" >> "$LOG_FILE"
+    fi
+    rm "$temp_log"
 
     if [ ! -s "$output" ]; then
-        display_error "HEIC output file is empty or missing."
+        display_error "HEIC output file is empty or missing: $output"
         return 1
     fi
+    
+    # Get file sizes for reporting
+    local source_size original_size_kb output_size output_size_kb reduction
+    source_size=$(stat -f %z "$source")
+    original_size_kb=$(awk "BEGIN {printf \"%.2f\", $source_size/1024}")
+    output_size=$(stat -f %z "$output")
+    output_size_kb=$(awk "BEGIN {printf \"%.2f\", $output_size/1024}")
+    reduction=$(awk "BEGIN {printf \"%.1f\", (1-$output_size/$source_size)*100}")
+    
+    display_info "File size: $original_size_kb KB → $output_size_kb KB ($reduction% reduction)"
 
     if [ "$TRASH_MODE" = true ]; then
-        move_to_trash "$source" || {
-            display_error "Failed to trash original image: $source"
-        }
+        display_debug "Attempting to trash original image"
+        move_to_trash "$source"
+        # Note: We intentionally don't check the return code here
     fi
 
+    display_debug "Image processing complete for: $source"
     return 0
 }
 
@@ -376,7 +524,7 @@ Usage: automat [OPTIONS] <operation> <source> [additional_file]
 Operations:
   refine, amv, loop_audio, audiofy
 
-If 'refine' and <source> is a directory, all video/image files (one level deep) will be refined.
+If 'refine' and <source> is a directory, all video/image files will be recursively processed.
 
 Options:
   -v              Verbose logging
@@ -385,6 +533,7 @@ Options:
   -f <format>     Video container: mp4, m4v, mkv, webm, mov (default: mov)
   -l              Enable logging
   -t              Trash original file after processing
+  -d              Debug mode (extra verbose logging)
 
 Examples:
     automat refine video.mp4
@@ -396,10 +545,10 @@ Examples:
     automat audiofy image.jpg audio.mp3
 
 Automator example (for Finder right-click):
-    source ~/.zshrc
-    for f in "\$@"; do
-        ~/bin/automat -t refine "\$f"
-    done
+source ~/.zshrc
+for f in "\$@"; do
+    ~/bin/automat -t refine "\$f"
+done
 
 EOF
 }
@@ -411,7 +560,7 @@ main() {
     local codec="hevc"
     local output_format="mov"
 
-    while getopts ":vc:gf:lt" opt; do
+    while getopts ":vc:gf:ltd" opt; do
         case "$opt" in
             v ) ENABLE_LOGGING=true ;;
             c ) codec=$OPTARG ;;
@@ -419,6 +568,7 @@ main() {
             f ) output_format=$OPTARG ;;
             l ) ENABLE_LOGGING=true ;;
             t ) TRASH_MODE=true ;;
+            d ) DEBUG_MODE=true; ENABLE_LOGGING=true ;;
             \? )
                 display_error "Invalid option: -$OPTARG"
                 usage
@@ -440,16 +590,25 @@ main() {
     [ -z "$operation" ] && { display_error "No operation specified."; usage; exit 1; }
     [ -z "$source" ] && { display_error "No source file specified."; usage; exit 1; }
 
-    CODEC="$codec"
-    OUTPUT_FORMAT="$output_format"
+    # These need to be exported for the subshell in the refine_recursive function
+    export CODEC="$codec"
+    export OUTPUT_FORMAT="$output_format"
+    export TRASH_MODE="$TRASH_MODE"
+    export ENABLE_LOGGING="$ENABLE_LOGGING"
+    export DEBUG_MODE="$DEBUG_MODE"
+    export LOG_FILE="$LOG_FILE"
+    export SUFFIX="$SUFFIX"
+
+    display_debug "Starting automat with operation: $operation, source: $source"
+    display_debug "Settings: codec=$codec, format=$output_format, trash=$TRASH_MODE, log=$ENABLE_LOGGING"
 
     case "$operation" in
         refine)
             if [ -d "$source" ]; then
-                # Directory mode => continue on errors
-                refine_recursive "$source"
+                # Directory mode - process files recursively
+                refine_recursive "$source" "$codec" "$output_format"
             else
-                # Single-file refine => exit on error
+                # Single-file refine
                 [ ! -f "$source" ] && {
                     display_error "Source file not found: $source"
                     exit 1
@@ -479,7 +638,7 @@ main() {
                 display_error "Source file not found: $source"
                 exit 1
             }
-            # Single-file or single + extra file scenario => exit on error
+            # Single-file or single + extra file scenario
             process_video "$source" "$operation" "$param" "$codec" "$output_format" || exit 1
             ;;
         *)
@@ -489,7 +648,7 @@ main() {
             ;;
     esac
 
-    log "INFO" "Operation completed successfully."
+    display_info "Operation completed successfully."
     if [ "$ENABLE_LOGGING" = true ]; then
         echo "Log file is at $LOG_FILE"
     fi
