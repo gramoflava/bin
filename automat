@@ -1,8 +1,5 @@
 #!/bin/zsh
-
-################################################################################
-# GLOBAL SETTINGS & ERROR HANDLING
-################################################################################
+# Global settings and error handling functions
 LOG_FILE="/tmp/automat.log"
 ENABLE_LOGGING=false
 USE_GPU=false
@@ -10,18 +7,21 @@ TRASH_MODE=false
 SUFFIX="-re"
 DEBUG_MODE=false
 
+#+ Display an error message and log it
 display_error() {
     local message="$1"
     echo "Error: $message" >&2
     log "ERROR" "$message"
 }
 
+# Display an informational message and log it
 display_info() {
     local message="$1"
     echo "$message"
     log "INFO" "$message"
 }
 
+# Display debug messages if debug mode is enabled and log them
 display_debug() {
     local message="$1"
     if [ "$DEBUG_MODE" = true ]; then
@@ -30,6 +30,7 @@ display_debug() {
     log "DEBUG" "$message"
 }
 
+# Log messages to file if logging is enabled
 log() {
     if [ "$ENABLE_LOGGING" = true ]; then
         local level="$1"
@@ -42,45 +43,45 @@ log() {
     fi
 }
 
-################################################################################
-# HELPER: CHECK IF FILE HAS A VIDEO EXTENSION
-################################################################################
+ # Check if a file is a video by inspecting its MIME type using the 'file' command
 is_video_file() {
     local file="$1"
-    local ext="${file##*.}"
-    ext="$(echo "$ext" | tr '[:upper:]' '[:lower:]')"
+    if [ ! -f "$file" ]; then
+        return 1
+    fi
 
-    case "$ext" in
-        mp4|m4v|mov|mkv|webm|avi|flv|wmv|mpg|mpeg|3gp|ogv|ts|vob|hevc|av1 )
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    # Get the MIME type using the file command
+    local mimetype
+    mimetype=$(file --mime-type -b "$file")
+    
+    # Check if the MIME type indicates a video file
+    if [[ $mimetype == video/* ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
-################################################################################
-# HELPER: CHECK IF FILE HAS AN IMAGE EXTENSION
-################################################################################
+ # Check if a file is an image by inspecting its MIME type using the 'file' command
 is_image_file() {
     local file="$1"
-    local ext="${file##*.}"
-    ext="$(echo "$ext" | tr '[:upper:]' '[:lower:]')"
+    if [ ! -f "$file" ]; then
+        return 1
+    fi
 
-    case "$ext" in
-        jpg|jpeg|png|bmp|gif|tiff|tif|webp|avif|jxl )
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    # Get the MIME type using the file command
+    local mimetype
+    mimetype=$(file --mime-type -b "$file")
+    
+    # Check if the MIME type indicates an image file
+    if [[ $mimetype == image/* ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
-################################################################################
-# RECURSIVE REFINE - IMPROVED VERSION
-################################################################################
+ # Recursively process video and image files in a directory
 refine_recursive() {
     local dir="$1"
     local codec="$2"
@@ -135,9 +136,7 @@ refine_recursive() {
     return 0
 }
 
-################################################################################
-# FILE TRASHING - IMPROVED WITH BETTER ERROR HANDLING
-################################################################################
+ # Move a file to trash using AppleScript (Finder)
 move_to_trash() {
     local file="$1"
     if [ -z "$file" ]; then
@@ -181,9 +180,7 @@ EOF
     fi
 }
 
-################################################################################
-# VIDEO INFORMATION & BITRATE CALC
-################################################################################
+ # Retrieve video metadata (width, height, duration, bitrate, filesize) using ffprobe and jq
 get_video_info() {
     local source="$1"
     display_debug "Getting video info for: $source"
@@ -227,6 +224,7 @@ get_video_info() {
     echo "$width $height $duration $bitrate $filesize"
 }
 
+# Calculate optimal video bitrate based on resolution, current bitrate, filesize, and duration
 calculate_optimal_bitrate() {
     local width="$1"
     local height="$2"
@@ -280,9 +278,8 @@ calculate_optimal_bitrate() {
     echo "$chosen_bitrate"
 }
 
-################################################################################
-# FFmpeg Command Construction
-################################################################################
+ # Construct the ffmpeg command for video processing
+ # Explains input options, output options, codec flags, and container settings
 build_ffmpeg_command() {
     local source="$1"
     local operation="$2"
@@ -376,9 +373,7 @@ build_ffmpeg_command() {
     echo "$ffmpeg_cmd"
 }
 
-################################################################################
-# MAIN VIDEO PROCESSING - IMPROVED ERROR HANDLING
-################################################################################
+ # Process a video file: gather metadata, compute bitrate, build and execute ffmpeg command (uses ffprobe and ffmpeg)
 process_video() {
     local source="$1"
     local operation="$2"
@@ -455,9 +450,7 @@ process_video() {
     return 0
 }
 
-################################################################################
-# IMAGE PROCESSING - IMPROVED ERROR HANDLING
-################################################################################
+ # Process an image file by converting it to HEIC format using the 'sips' command
 process_image() {
     local source="$1"
     local output="${source%.*}${SUFFIX}.heic"
@@ -514,9 +507,7 @@ process_image() {
     return 0
 }
 
-################################################################################
-# USAGE
-################################################################################
+ # Display usage instructions
 usage() {
     cat <<EOF
 Usage: automat [OPTIONS] <operation> <source> [additional_file]
@@ -553,9 +544,7 @@ done
 EOF
 }
 
-################################################################################
-# ENTRYPOINT
-################################################################################
+ # Main function: parse arguments and execute the requested operation
 main() {
     local codec="hevc"
     local output_format="mov"
