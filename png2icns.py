@@ -1,66 +1,65 @@
 #!/usr/bin/env python3
 import argparse
 import sys
-import os
 import shutil
 import subprocess
+import logging
+from pathlib import Path
 from PIL import Image
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 def main():
     parser = argparse.ArgumentParser(description="Convert a PNG image into an .icns icon")
     parser.add_argument("input_image", help="Path to the input PNG file")
     args = parser.parse_args()
 
-    input_image = args.input_image
-    if not os.path.isfile(input_image):
-        print(f"Error: File '{input_image}' not found.", file=sys.stderr)
-        sys.exit(1)
+    input_path = Path(args.input_image)
+    if not input_path.is_file():
+        logging.error("File '%s' not found.", input_path)
+        return
 
     try:
-        with Image.open(input_image) as img:
-            width, height = img.size
-    except Exception:
-        print(f"Error: Unable to determine dimensions of '{input_image}'.", file=sys.stderr)
-        sys.exit(1)
+        img = Image.open(input_path)
+        width, height = img.size
+    except Exception as e:
+        logging.error("Unable to open '%s': %s", input_path, e)
+        return
+    max_dim = max(width, height)
 
-    max_size = max(width, height)
-    if max_size < 16:
-        print("Error: Image resolution too small for icon generation.", file=sys.stderr)
-        sys.exit(1)
+    input_dir = input_path.parent
+    base_name = input_path.stem
+    iconset_dir = input_dir / f"{base_name}.iconset"
+    icns_file = input_dir / f"{base_name}.icns"
 
-    input_dir = os.path.dirname(input_image)
-    base_name = os.path.splitext(os.path.basename(input_image))[0]
-    iconset_dir = os.path.join(input_dir, f"{base_name}.iconset")
-    icns_file = os.path.join(input_dir, f"{base_name}.icns")
+    iconset_dir.mkdir(exist_ok=True)
 
-    os.makedirs(iconset_dir, exist_ok=True)
-
-    # Required icon sizes for macOS
     sizes = [16, 32, 64, 128, 256, 512]
     for size in sizes:
-        # 1x
-        if size <= max_size:
-            output_1x = os.path.join(iconset_dir, f"icon_{size}x{size}.png")
-            with Image.open(input_image) as img:
-                img.resize((size, size), Image.LANCZOS).save(output_1x)
+        for scale in (1, 2):
+            pixels = size * scale
+            if pixels <= max_dim:
+                suffix = "@2x" if scale == 2 else ""
+                output = iconset_dir / f"icon_{size}x{size}{suffix}.png"
+                img.resize((pixels, pixels), Image.LANCZOS).save(output)
+                logging.info("Generated %s", output)
 
-        # 2x (Retina)
-        retina = size * 2
-        if retina <= max_size:
-            output_2x = os.path.join(iconset_dir, f"icon_{size}x{size}@2x.png")
-            with Image.open(input_image) as img:
-                img.resize((retina, retina), Image.LANCZOS).save(output_2x)
-
-    # Build .icns using macOS iconutil
-    result = subprocess.run(["iconutil", "-c", "icns", iconset_dir, "-o", icns_file])
+    result = subprocess.run(
+        ["iconutil", "-c", "icns", str(iconset_dir), "-o", str(icns_file)],
+        capture_output=True,
+    )
     if result.returncode != 0:
-        print("Error: Failed to generate .icns file via iconutil.", file=sys.stderr)
-        sys.exit(1)
+        logging.error("iconutil failed (%d): %s", result.returncode, result.stderr.decode().strip())
+        return
+    logging.info("ICNS file generated: %s", icns_file)
 
-    # Cleanup intermediate iconset folder
-    shutil.rmtree(iconset_dir)
+    try:
+        shutil.rmtree(iconset_dir)
+        logging.info("Cleaned up %s", iconset_dir)
+    except Exception as e:
+        logging.warning("Failed to remove %s: %s", iconset_dir, e)
 
-    print(f"ICNS file generated: {icns_file}")
+    return
 
 if __name__ == "__main__":
     main()
