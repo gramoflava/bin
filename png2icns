@@ -1,68 +1,66 @@
-#!/bin/bash
+#!/usr/bin/env python3
+import argparse
+import sys
+import os
+import shutil
+import subprocess
+from PIL import Image
 
-# Check if input is provided
-if [ -z "$1" ]; then
-    echo "Usage: $0 /path/to/image.png"
-    exit 1
-fi
+def main():
+    parser = argparse.ArgumentParser(description="Convert a PNG image into an .icns icon")
+    parser.add_argument("input_image", help="Path to the input PNG file")
+    args = parser.parse_args()
 
-# Input file
-INPUT_IMAGE="$1"
+    input_image = args.input_image
+    if not os.path.isfile(input_image):
+        print(f"Error: File '{input_image}' not found.", file=sys.stderr)
+        sys.exit(1)
 
-# Validate file exists
-if [ ! -f "$INPUT_IMAGE" ]; then
-    echo "Error: File '$INPUT_IMAGE' not found."
-    exit 1
-fi
+    try:
+        with Image.open(input_image) as img:
+            width, height = img.size
+    except Exception:
+        print(f"Error: Unable to determine dimensions of '{input_image}'.", file=sys.stderr)
+        sys.exit(1)
 
-# Check image dimensions
-dimensions=$(sips -g pixelWidth -g pixelHeight "$INPUT_IMAGE" 2>/dev/null | awk '/pixelWidth|pixelHeight/ {print $2}')
-if [ -z "$dimensions" ]; then
-    echo "Error: Unable to determine dimensions of '$INPUT_IMAGE'."
-    exit 1
-fi
+    max_size = max(width, height)
+    if max_size < 16:
+        print("Error: Image resolution too small for icon generation.", file=sys.stderr)
+        sys.exit(1)
 
-# Determine the maximum size (largest side)
-IFS=$'\n' read -r width height <<<"$dimensions"
-max_size=$((width > height ? width : height))
+    input_dir = os.path.dirname(input_image)
+    base_name = os.path.splitext(os.path.basename(input_image))[0]
+    iconset_dir = os.path.join(input_dir, f"{base_name}.iconset")
+    icns_file = os.path.join(input_dir, f"{base_name}.icns")
 
-if [ "$max_size" -lt 16 ]; then
-    echo "Error: Image resolution too small for icon generation."
-    exit 1
-fi
+    os.makedirs(iconset_dir, exist_ok=True)
 
-# Get directory and base name of input file
-INPUT_DIR=$(dirname "$INPUT_IMAGE")
-INPUT_BASENAME=$(basename "$INPUT_IMAGE" .png)
+    # Required icon sizes for macOS
+    sizes = [16, 32, 64, 128, 256, 512]
+    for size in sizes:
+        # 1x
+        if size <= max_size:
+            output_1x = os.path.join(iconset_dir, f"icon_{size}x{size}.png")
+            with Image.open(input_image) as img:
+                img.resize((size, size), Image.LANCZOS).save(output_1x)
 
-# Output locations
-ICONSET_DIR="${INPUT_DIR}/${INPUT_BASENAME}.iconset"
-ICNS_FILE="${INPUT_DIR}/${INPUT_BASENAME}.icns"
+        # 2x (Retina)
+        retina = size * 2
+        if retina <= max_size:
+            output_2x = os.path.join(iconset_dir, f"icon_{size}x{size}@2x.png")
+            with Image.open(input_image) as img:
+                img.resize((retina, retina), Image.LANCZOS).save(output_2x)
 
-# Create .iconset directory
-mkdir -p "$ICONSET_DIR"
+    # Build .icns using macOS iconutil
+    result = subprocess.run(["iconutil", "-c", "icns", iconset_dir, "-o", icns_file])
+    if result.returncode != 0:
+        print("Error: Failed to generate .icns file via iconutil.", file=sys.stderr)
+        sys.exit(1)
 
-# Define macOS icon sizes
-declare -a sizes=("16" "32" "64" "128" "256" "512")
+    # Cleanup intermediate iconset folder
+    shutil.rmtree(iconset_dir)
 
-# Generate iconset
-for size in "${sizes[@]}"; do
-    if [ "$size" -le "$max_size" ]; then
-        output_file="${ICONSET_DIR}/icon_${size}x${size}.png"
-        sips -z "$size" "$size" "$INPUT_IMAGE" --out "$output_file"
+    print(f"ICNS file generated: {icns_file}")
 
-        # Generate 2x (Retina) size if applicable
-        if [ $((size * 2)) -le "$max_size" ]; then
-            output_file_2x="${ICONSET_DIR}/icon_${size}x${size}@2x.png"
-            sips -z $((size * 2)) $((size * 2)) "$INPUT_IMAGE" --out "$output_file_2x"
-        fi
-    fi
-done
-
-# Create .icns file
-iconutil -c icns "$ICONSET_DIR" -o "$ICNS_FILE"
-
-# Cleanup
-rm -rf "$ICONSET_DIR"
-
-echo "ICNS file generated: $ICNS_FILE"
+if __name__ == "__main__":
+    main()
