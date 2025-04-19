@@ -1,646 +1,248 @@
-#!/bin/zsh
-# Global settings and error handling functions
-LOG_FILE="/tmp/automat.log"
-ENABLE_LOGGING=false
-USE_GPU=false
-TRASH_MODE=false
-SUFFIX="-re"
-DEBUG_MODE=false
-
-#+ Display an error message and log it
-display_error() {
-    local message="$1"
-    echo "Error: $message" >&2
-    log "ERROR" "$message"
-}
-
-# Display an informational message and log it
-display_info() {
-    local message="$1"
-    echo "$message"
-    log "INFO" "$message"
-}
-
-# Display debug messages if debug mode is enabled and log them
-display_debug() {
-    local message="$1"
-    if [ "$DEBUG_MODE" = true ]; then
-        echo "Debug: $message"
-    fi
-    log "DEBUG" "$message"
-}
-
-# Log messages to file if logging is enabled
-log() {
-    if [ "$ENABLE_LOGGING" = true ]; then
-        local level="$1"
-        local message="$2"
-        local timestamp
-        timestamp=$(date "+%Y-%m-%d %H:%M:%S")
-        mkdir -p "$(dirname "$LOG_FILE")"
-        touch "$LOG_FILE"
-        echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
-    fi
-}
-
- # Check if a file is a video by inspecting its MIME type using the 'file' command
-is_video_file() {
-    local file="$1"
-    if [ ! -f "$file" ]; then
-        return 1
-    fi
-
-    # Get the MIME type using the file command
-    local mimetype
-    mimetype=$(file --mime-type -b "$file")
-    
-    # Check if the MIME type indicates a video file
-    if [[ $mimetype == video/* ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
- # Check if a file is an image by inspecting its MIME type using the 'file' command
-is_image_file() {
-    local file="$1"
-    if [ ! -f "$file" ]; then
-        return 1
-    fi
-
-    # Get the MIME type using the file command
-    local mimetype
-    mimetype=$(file --mime-type -b "$file")
-    
-    # Check if the MIME type indicates an image file
-    if [[ $mimetype == image/* ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
- # Recursively process video and image files in a directory
-refine_recursive() {
-    local dir="$1"
-    local codec="$2"
-    local output_format="$3"
-    
-    display_info "Recursively refining all video/image files in directory: $dir"
-    log "INFO" "Using codec: $codec, output format: $output_format"
-    
-    # Count total files to process
-    local total_files=0
-    local processed_files=0
-    local failed_files=0
-    
-    while IFS= read -r -d $'\0' item; do
-        if is_video_file "$item" || is_image_file "$item"; then
-            total_files=$((total_files + 1))
-        fi
-    done < <(find "$dir" -type f -not -iname "*${SUFFIX}.*" -print0)
-    
-    display_info "Found $total_files files to process"
-    
-    # Process files with proper progress tracking
-    find "$dir" -type f -not -iname "*${SUFFIX}.*" -print0 | while IFS= read -r -d $'\0' item; do
-        if is_video_file "$item"; then
-            processed_files=$((processed_files + 1))
-            display_info "[$processed_files/$total_files] Processing video: $item"
-            log "INFO" "Processing video file: $item"
-            
-            if process_video "$item" "refine" "" "$codec" "$output_format"; then
-                display_info "✓ Successfully processed: $item"
-            else
-                failed_files=$((failed_files + 1))
-                display_error "✗ Failed to process: $item"
-                # Continue processing other files regardless of error
-            fi
-        elif is_image_file "$item"; then
-            processed_files=$((processed_files + 1))
-            display_info "[$processed_files/$total_files] Processing image: $item"
-            log "INFO" "Processing image file: $item"
-            
-            if process_image "$item"; then
-                display_info "✓ Successfully processed: $item"
-            else
-                failed_files=$((failed_files + 1))
-                display_error "✗ Failed to process: $item"
-                # Continue processing other files regardless of error
-            fi
-        fi
-    done
-    
-    display_info "Processing complete. Processed: $processed_files, Failed: $failed_files"
-    return 0
-}
-
- # Move a file to trash using AppleScript (Finder)
-move_to_trash() {
-    local file="$1"
-    if [ -z "$file" ]; then
-        display_error "No file specified for move_to_trash"
-        return 1
-    fi
-
-    # Check if file exists before attempting to trash it
-    if [ ! -f "$file" ]; then
-        display_error "File not found for trashing: $file"
-        return 1
-    fi
-
-    local absolute_path
-    absolute_path=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
-    
-    display_debug "Attempting to trash file: $absolute_path"
-
-    local trash_result
-    trash_result=$(osascript <<EOF 2>&1
-        try
-            tell application "Finder"
-                move POSIX file "$absolute_path" to trash
-            end tell
-            return "success"
-        on error errMsg number errNum
-            return "error:" & errMsg & ":" & errNum
-        end try
-EOF
-    )
-
-    if [[ "$trash_result" == "success" ]]; then
-        log "INFO" "Moved file to trash: $file"
-        display_debug "Moved file to trash: $file"
-        return 0
-    else
-        display_error "Failed to move file to trash: $file ($trash_result)"
-        # Don't fail the overall process just because trashing failed
-        # We'll consider the processing successful even if trash fails
-        return 0
-    fi
-}
-
- # Retrieve video metadata (width, height, duration, bitrate, filesize) using ffprobe and jq
-get_video_info() {
-    local source="$1"
-    display_debug "Getting video info for: $source"
-    
-    local info
-    info=$(ffprobe -v quiet -print_format json -show_format -show_streams "$source")
-    
-    if [ $? -ne 0 ]; then
-        display_error "Failed to get video info with ffprobe: $source"
-        # Return default values
-        echo "0 0 0 0 0"
-        return 1
-    fi
-
-    local width height duration bitrate filesize
-    width=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .width')
-    height=$(echo "$info" | jq -r '.streams[] | select(.codec_type=="video") | .height')
-    duration=$(echo "$info" | jq -r '.format.duration')
-    bitrate=$(echo "$info" | jq -r '.format.bit_rate')
-    filesize=$(stat -f %z "$source")
-
-    # Default fallback with more informative logging
-    if [ "$width" = "null" ] || [ -z "$width" ]; then
-        display_debug "Width not found in video metadata, using default value"
-        width=0
-    fi
-    if [ "$height" = "null" ] || [ -z "$height" ]; then
-        display_debug "Height not found in video metadata, using default value"
-        height=0
-    fi
-    if [ "$duration" = "null" ] || [ -z "$duration" ]; then
-        display_debug "Duration not found in video metadata, using default value"
-        duration=0
-    fi
-    if [ "$bitrate" = "null" ] || [ -z "$bitrate" ]; then
-        display_debug "Bitrate not found in video metadata, using default value"
-        bitrate=0
-    fi
-
-    log "INFO" "Video info for '$source' => Width: $width, Height: $height, Duration: $duration, Bitrate: $bitrate, Filesize: $filesize"
-    echo "$width $height $duration $bitrate $filesize"
-}
-
-# Calculate optimal video bitrate based on resolution, current bitrate, filesize, and duration
-calculate_optimal_bitrate() {
-    local width="$1"
-    local height="$2"
-    local current_bitrate="$3"   # bits/s from ffprobe
-    local filesize="$4"          # bytes
-    local duration="$5"          # seconds
-
-    display_debug "Calculating optimal bitrate for video: ${width}x${height}, current: ${current_bitrate}bit/s, size: ${filesize}bytes, duration: ${duration}s"
-
-    # 1) Lower baseline bitrates for each resolution tier.
-    local pixels=$((width * height))
-    local base_bitrate
-    if [ "$pixels" -ge 8294400 ]; then   # ~ 4K
-        base_bitrate=6000000   # 6 Mbps
-    elif [ "$pixels" -gt 2073600 ]; then # ~ 1080p
-        base_bitrate=4000000   # 4 Mbps
-    elif [ "$pixels" -gt 921600 ]; then  # ~ 720p
-        base_bitrate=2500000   # 2.5 Mbps
-    else
-        base_bitrate=1200000   # 1.2 Mbps
-    fi
-
-    # 2) If current bitrate is lower than base, prefer that smaller one.
-    local chosen_bitrate="$base_bitrate"
-    if [ "$current_bitrate" -ne 0 ] && [ "$current_bitrate" -lt "$base_bitrate" ]; then
-        chosen_bitrate="$current_bitrate"
-        display_debug "Using current bitrate ($current_bitrate) as it's lower than base bitrate ($base_bitrate)"
-    fi
-
-    # 3) File-size-based approach:
-    if [ "$duration" != "0" ]; then
-        local actual_bitrate_from_filesize=$((filesize * 8 / duration)) # bits/s
-        local reduce_factor=0.80
-        local target_bitrate
-        target_bitrate=$(awk -v ab="$actual_bitrate_from_filesize" -v rf="$reduce_factor" \
-            'BEGIN { printf "%d", ab * rf }')
-
-        if [ "$target_bitrate" -lt "$chosen_bitrate" ] && [ "$target_bitrate" -gt 0 ]; then
-            chosen_bitrate="$target_bitrate"
-            display_debug "Using target bitrate ($target_bitrate) based on filesize analysis"
-        fi
-    fi
-
-    # Floor at 100 kb/s (100000 bits/s)
-    [ "$chosen_bitrate" -lt 100000 ] && chosen_bitrate=100000
-
-    # Round to nearest 100k bits
-    chosen_bitrate=$(((chosen_bitrate + 50000) / 100000 * 100000))
-
-    log "INFO" "Calculated optimal bitrate: $chosen_bitrate (bits/s)"
-    echo "$chosen_bitrate"
-}
-
- # Construct the ffmpeg command for video processing
- # Explains input options, output options, codec flags, and container settings
-build_ffmpeg_command() {
-    local source="$1"
-    local operation="$2"
-    local param="$3"
-    local codec="$4"
-    local output_format="$5"
-    local new_bitrate="$6"  # bits/s
-    local thread_count=8
-
-    display_debug "Building FFmpeg command for: $source, operation: $operation, codec: $codec, format: $output_format, bitrate: $new_bitrate"
-
-    # Common video filter
-    local video_filter="scale=trunc(iw/2)*2:trunc(ih/2)*2"
-
-    local ffmpeg_input_opts="-hwaccel videotoolbox"
-    local ffmpeg_output_opts="-threads $thread_count -movflags +faststart -pix_fmt yuv420p"
-
-    # Convert bits/s to kbps
-    local kbps=$(( new_bitrate / 1024 ))
-
-    # Codec logic
-    case "$codec" in
-        h264)
-            ffmpeg_output_opts+=" -c:v h264_videotoolbox -b:v ${kbps}k -tag:v avc1"
-            ;;
-        hevc)
-            ffmpeg_output_opts+=" -c:v hevc_videotoolbox -b:v ${kbps}k -tag:v hvc1"
-            ;;
-        av1)
-            ffmpeg_output_opts+=" -c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
-            ;;
-        *)
-            display_error "Invalid codec: $codec"
-            return 1
-            ;;
-    esac
-
-    # Container / format
-    case "$output_format" in
-        mp4|m4v)
-            # no special flags needed
-            ;;
-        mkv)
-            ffmpeg_output_opts+=" -f matroska"
-            ;;
-        webm)
-            if [ "$codec" != "av1" ]; then
-                # If user picks webm + h264 or hevc, override with VP9
-                ffmpeg_output_opts="-c:v libvpx-vp9 -crf 30 -b:v 0 -f webm"
-            else
-                ffmpeg_output_opts+=" -f webm"
-            fi
-            ;;
-        mov)
-            # no special flags needed
-            ;;
-        *)
-            display_error "Invalid output format: $output_format"
-            return 1
-            ;;
-    esac
-
-    local output="${source%.*}${SUFFIX}.${output_format}"
-    
-    # Check if output file already exists
-    if [ -f "$output" ]; then
-        display_debug "Output file already exists: $output"
-    fi
-
-    local ffmpeg_cmd=""
-    case "$operation" in
-        refine)
-            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -i \"$source\" $ffmpeg_output_opts -vf \"$video_filter\" -c:a aac -b:a 128k -y \"$output\""
-            ;;
-        amv|loop_audio)
-            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -i \"$source\" -i \"$param\" \
-                -shortest -map 0:v:0 -map 1:a:0 \
-                $ffmpeg_output_opts -vf \"$video_filter\" -c:a aac -b:a 192k -y \"$output\""
-            ;;
-        audiofy)
-            ffmpeg_cmd="ffmpeg $ffmpeg_input_opts -loop 1 -framerate 25 -i \"$source\" -i \"$param\" \
-                $ffmpeg_output_opts -vf \"$video_filter\" \
-                -map 0:v -map 1:a -c:a aac -b:a 192k -shortest -y \"$output\""
-            ;;
-        *)
-            display_error "Invalid operation: $operation"
-            return 1
-            ;;
-    esac
-
-    echo "$ffmpeg_cmd"
-}
-
- # Process a video file: gather metadata, compute bitrate, build and execute ffmpeg command (uses ffprobe and ffmpeg)
-process_video() {
-    local source="$1"
-    local operation="$2"
-    local param="$3"
-    local codec="$4"
-    local output_format="$5"
-    
-    display_debug "Starting video processing for: $source"
-
-    # Gather video info
-    local video_info
-    video_info=$(get_video_info "$source")
-    local width height duration bitrate filesize
-    read -r width height duration bitrate filesize <<< "$video_info"
-
-    # Calculate new bitrate
-    local new_bitrate
-    new_bitrate=$(calculate_optimal_bitrate "$width" "$height" "$bitrate" "$filesize" "$duration")
-
-    # Build FFmpeg command
-    local cmd
-    cmd=$(build_ffmpeg_command "$source" "$operation" "$param" "$codec" "$output_format" "$new_bitrate") || {
-        display_error "FFmpeg command construction failed."
-        return 1
-    }
-    log "INFO" "FFmpeg command: $cmd"
-    display_debug "Executing FFmpeg command"
-
-    # Create temp log file for this operation
-    local temp_log
-    temp_log=$(mktemp /tmp/automat_ffmpeg.XXXXXX)
-    
-    # Run FFmpeg with better error handling
-    if ! eval "$cmd" > "$temp_log" 2>&1; then
-        display_error "FFmpeg command failed. Check log for details."
-        cat "$temp_log" >> "$LOG_FILE"
-        rm "$temp_log"
-        return 1
-    fi
-    
-    # Add FFmpeg output to main log if needed
-    if [ "$DEBUG_MODE" = true ]; then
-        cat "$temp_log" >> "$LOG_FILE"
-    fi
-    rm "$temp_log"
-
-    # Validate output
-    local output="${source%.*}${SUFFIX}.${output_format}"
-    if [ ! -s "$output" ]; then
-        display_error "Output file is empty or missing: $output"
-        return 1
-    fi
-    
-    display_debug "Successfully created output file: $output"
-
-    # Get file sizes for reporting
-    local source_size original_size_mb output_size output_size_mb reduction
-    source_size=$(stat -f %z "$source")
-    original_size_mb=$(awk "BEGIN {printf \"%.2f\", $source_size/1024/1024}")
-    output_size=$(stat -f %z "$output")
-    output_size_mb=$(awk "BEGIN {printf \"%.2f\", $output_size/1024/1024}")
-    reduction=$(awk "BEGIN {printf \"%.1f\", (1-$output_size/$source_size)*100}")
-    
-    display_info "File size: $original_size_mb MB → $output_size_mb MB ($reduction% reduction)"
-
-    # Trash original if requested - BUT don't fail if trashing fails
-    if [ "$TRASH_MODE" = true ]; then
-        display_debug "Attempting to trash original file"
-        move_to_trash "$source"
-        # Note: We intentionally don't check the return code here
-    fi
-
-    display_debug "Video processing complete for: $source"
-    return 0
-}
-
- # Process an image file by converting it to HEIC format using the 'sips' command
-process_image() {
-    local source="$1"
-    local output="${source%.*}${SUFFIX}.heic"
-    
-    display_debug "Starting image processing for: $source"
-
-    # Check if output already exists
-    if [ -f "$output" ]; then
-        display_debug "Output file already exists: $output"
-    fi
-
-    local cmd="sips -s format heic \"$source\" --out \"$output\""
-    log "INFO" "Image refine command: $cmd"
-    
-    # Create temp log file for this operation
-    local temp_log
-    temp_log=$(mktemp /tmp/automat_sips.XXXXXX)
-
-    if ! eval "$cmd" > "$temp_log" 2>&1; then
-        display_error "Image refine command failed. Check log for details."
-        cat "$temp_log" >> "$LOG_FILE"
-        rm "$temp_log"
-        return 1
-    fi
-    
-    # Add sips output to main log if needed
-    if [ "$DEBUG_MODE" = true ]; then
-        cat "$temp_log" >> "$LOG_FILE"
-    fi
-    rm "$temp_log"
-
-    if [ ! -s "$output" ]; then
-        display_error "HEIC output file is empty or missing: $output"
-        return 1
-    fi
-    
-    # Get file sizes for reporting
-    local source_size original_size_kb output_size output_size_kb reduction
-    source_size=$(stat -f %z "$source")
-    original_size_kb=$(awk "BEGIN {printf \"%.2f\", $source_size/1024}")
-    output_size=$(stat -f %z "$output")
-    output_size_kb=$(awk "BEGIN {printf \"%.2f\", $output_size/1024}")
-    reduction=$(awk "BEGIN {printf \"%.1f\", (1-$output_size/$source_size)*100}")
-    
-    display_info "File size: $original_size_kb KB → $output_size_kb KB ($reduction% reduction)"
-
-    if [ "$TRASH_MODE" = true ]; then
-        display_debug "Attempting to trash original image"
-        move_to_trash "$source"
-        # Note: We intentionally don't check the return code here
-    fi
-
-    display_debug "Image processing complete for: $source"
-    return 0
-}
-
- # Display usage instructions
-usage() {
-    cat <<EOF
-Usage: automat [OPTIONS] <operation> <source> [additional_file]
-
-Operations:
-  refine, amv, loop_audio, audiofy
-
-If 'refine' and <source> is a directory, all video/image files will be recursively processed.
-
-Options:
-  -v              Verbose logging
-  -c <codec>      Codec: h264, hevc, av1 (default: hevc) for videos
-  -g              Use GPU if available (video only)
-  -f <format>     Video container: mp4, m4v, mkv, webm, mov (default: mov)
-  -l              Enable logging
-  -t              Trash original file after processing
-  -d              Debug mode (extra verbose logging)
-
-Examples:
-    automat refine video.mp4
-    automat -c h264 refine video.mp4
-    automat -v -c h264 -f mkv refine video.mp4
-    automat refine /path/to/videos/
-    automat amv video.mp4 audio.mp3
-    automat loop_audio video.mp4 audio.mp3
-    automat audiofy image.jpg audio.mp3
-
-Automator example (for Finder right-click):
-source ~/.zshrc
-for f in "\$@"; do
-    ~/bin/automat -t refine "\$f"
-done
-
-EOF
-}
-
- # Main function: parse arguments and execute the requested operation
-main() {
-    local codec="hevc"
-    local output_format="mov"
-
-    while getopts ":vc:gf:ltd" opt; do
-        case "$opt" in
-            v ) ENABLE_LOGGING=true ;;
-            c ) codec=$OPTARG ;;
-            g ) USE_GPU=true ;;
-            f ) output_format=$OPTARG ;;
-            l ) ENABLE_LOGGING=true ;;
-            t ) TRASH_MODE=true ;;
-            d ) DEBUG_MODE=true; ENABLE_LOGGING=true ;;
-            \? )
-                display_error "Invalid option: -$OPTARG"
-                usage
-                exit 1
-                ;;
-            : )
-                display_error "Option -$OPTARG requires an argument."
-                usage
-                exit 1
-                ;;
-        esac
-    done
-    shift $((OPTIND - 1))
-
-    local operation="$1"
-    local source="$2"
-    local param="$3"
-
-    [ -z "$operation" ] && { display_error "No operation specified."; usage; exit 1; }
-    [ -z "$source" ] && { display_error "No source file specified."; usage; exit 1; }
-
-    # These need to be exported for the subshell in the refine_recursive function
-    export CODEC="$codec"
-    export OUTPUT_FORMAT="$output_format"
-    export TRASH_MODE="$TRASH_MODE"
-    export ENABLE_LOGGING="$ENABLE_LOGGING"
-    export DEBUG_MODE="$DEBUG_MODE"
-    export LOG_FILE="$LOG_FILE"
-    export SUFFIX="$SUFFIX"
-
-    display_debug "Starting automat with operation: $operation, source: $source"
-    display_debug "Settings: codec=$codec, format=$output_format, trash=$TRASH_MODE, log=$ENABLE_LOGGING"
-
-    case "$operation" in
-        refine)
-            if [ -d "$source" ]; then
-                # Directory mode - process files recursively
-                refine_recursive "$source" "$codec" "$output_format"
-            else
-                # Single-file refine
-                [ ! -f "$source" ] && {
-                    display_error "Source file not found: $source"
-                    exit 1
-                }
-
-                if is_video_file "$source"; then
-                    process_video "$source" "$operation" "$param" "$codec" "$output_format" || exit 1
-                elif is_image_file "$source"; then
-                    process_image "$source" || exit 1
-                else
-                    display_error "Unsupported file type for refine: $source"
-                    exit 1
-                fi
-            fi
-            ;;
-        amv|loop_audio|audiofy)
-            [ -z "$param" ] && {
-                display_error "Additional file not specified for '$operation'."
-                usage
-                exit 1
-            }
-            [ ! -f "$param" ] && {
-                display_error "Additional file not found: $param"
-                exit 1
-            }
-            [ ! -f "$source" ] && {
-                display_error "Source file not found: $source"
-                exit 1
-            }
-            # Single-file or single + extra file scenario
-            process_video "$source" "$operation" "$param" "$codec" "$output_format" || exit 1
-            ;;
-        *)
-            display_error "Invalid operation: $operation"
-            usage
-            exit 1
-            ;;
-    esac
-
-    display_info "Operation completed successfully."
-    if [ "$ENABLE_LOGGING" = true ]; then
-        echo "Log file is at $LOG_FILE"
-    fi
-}
-
-main "$@"
+#!/usr/bin/env python3
+import argparse
+import subprocess
+import os
+import sys
+import logging
+import tempfile
+import json
+
+# Global settings
+LOG_FILE = "/tmp/automat.log"
+ENABLE_LOGGING = False
+USE_GPU = False
+TRASH_MODE = False
+DEBUG_MODE = False
+SUFFIX = "-re"
+DEFAULT_CODEC = "hevc"
+DEFAULT_FORMAT = "mov"
+
+logger = logging.getLogger("automat")
+
+def setup_logging():
+    logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+    fmt = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s",
+                             datefmt="%Y-%m-%d %H:%M:%S")
+    if ENABLE_LOGGING:
+        fh = logging.FileHandler(LOG_FILE)
+        fh.setFormatter(fmt)
+        fh.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+        logger.addHandler(fh)
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setFormatter(logging.Formatter("%(message)s"))
+    ch.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+    logger.addHandler(ch)
+
+def display_error(message):
+    print(f"Error: {message}", file=sys.stderr)
+    logger.error(message)
+
+def display_info(message):
+    print(message)
+    logger.info(message)
+
+def display_debug(message):
+    if DEBUG_MODE:
+        print(f"Debug: {message}")
+    logger.debug(message)
+
+def run_command(cmd):
+    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+def is_video_file(path):
+    if not os.path.isfile(path):
+        return False
+    res = run_command(["file", "--mime-type", "-b", path])
+    return res.stdout.strip().startswith("video/")
+
+def is_image_file(path):
+    if not os.path.isfile(path):
+        return False
+    res = run_command(["file", "--mime-type", "-b", path])
+    return res.stdout.strip().startswith("image/")
+
+def move_to_trash(path):
+    if not os.path.isfile(path):
+        display_error(f"File not found for trashing: {path}")
+        return
+    script = f'''
+    tell application "Finder"
+        move POSIX file "{os.path.abspath(path)}" to trash
+    end tell
+    '''
+    res = run_command(["osascript", "-e", script])
+    if res.returncode == 0:
+        logger.info(f"Moved to trash: {path}")
+        display_debug(f"Moved to trash: {path}")
+    else:
+        display_error(f"Trash failed: {res.stderr.strip()}")
+
+def get_video_info(source):
+    display_debug(f"Getting info for: {source}")
+    cmd = ["ffprobe", "-v", "quiet", "-print_format", "json",
+           "-show_format", "-show_streams", source]
+    res = run_command(cmd)
+    if res.returncode != 0:
+        display_error(f"ffprobe error on {source}")
+        return 0,0,0.0,0,0
+    info = json.loads(res.stdout)
+    stream = next((s for s in info.get("streams",[]) if s.get("codec_type")=="video"), {})
+    width = stream.get("width", 0) or 0
+    height = stream.get("height",0) or 0
+    duration = float(info.get("format",{}).get("duration",0.0)) or 0.0
+    bitrate = int(info.get("format",{}).get("bit_rate",0) or 0)
+    filesize = os.path.getsize(source)
+    logger.info(f"Info: {width}x{height}, {duration}s, {bitrate}b/s, {filesize} bytes")
+    return width, height, duration, bitrate, filesize
+
+def calculate_optimal_bitrate(w, h, curr, size, dur):
+    display_debug(f"Calc bitrate for {w}x{h}, curr={curr}, size={size}, dur={dur}")
+    pix = w*h
+    if pix >= 8294400:   base = 6_000_000
+    elif pix > 2073600:  base = 4_000_000
+    elif pix >  921600:  base = 2_500_000
+    else:                base = 1_200_000
+    chosen = min(curr or base, base)
+    if dur > 0:
+        actual = int(size * 8 / dur)
+        targ = int(actual * 0.8)
+        if 0 < targ < chosen:
+            chosen = targ
+    chosen = max(chosen, 100_000)
+    chosen = round(chosen/100_000)*100_000
+    logger.info(f"Optimal bitrate: {chosen}")
+    return chosen
+
+def build_ffmpeg_command(src, codec, fmt, bitrate):
+    display_debug(f"Build ffmpeg cmd: codec={codec}, fmt={fmt}, br={bitrate}")
+    vf = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+    kb = bitrate//1024
+    if codec=="h264":
+        vopt = f"-c:v h264_videotoolbox -b:v {kb}k -tag:v avc1"
+    elif codec=="hevc":
+        vopt = f"-c:v hevc_videotoolbox -b:v {kb}k -tag:v hvc1"
+    elif codec=="av1":
+        vopt = "-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
+    else:
+        display_error(f"Invalid codec: {codec}")
+        sys.exit(1)
+    if fmt=="mkv":    vopt += " -f matroska"
+    elif fmt=="webm":
+        if codec!="av1":
+            vopt = "-c:v libvpx-vp9 -crf 30 -b:v 0 -f webm"
+        else:
+            vopt += " -f webm"
+    out = f"{os.path.splitext(src)[0]}{SUFFIX}.{fmt}"
+    cmd = [ "ffmpeg", "-hwaccel", "videotoolbox", "-i", src
+        ] + vopt.split() + [
+            "-vf", vf,
+            "-c:a", "aac", "-b:a", "128k",
+            "-pix_fmt", "yuv420p",
+            "-y", out
+            ]
+    return cmd, out
+
+def process_video(src, codec, fmt):
+    w,h,dur,br,sz = get_video_info(src)
+    new_br = calculate_optimal_bitrate(w,h,br,sz,dur)
+    cmd, out = build_ffmpeg_command(src, codec, fmt, new_br)
+    logger.info("Running: " + " ".join(cmd))
+    with tempfile.NamedTemporaryFile() as tmp:
+        res = subprocess.run(cmd, stdout=tmp, stderr=tmp)
+    if res.returncode!=0:
+        display_error("ffmpeg failed")
+        return False
+    if not os.path.isfile(out) or os.path.getsize(out)==0:
+        display_error(f"Output missing: {out}")
+        return False
+    orig_sz = os.path.getsize(src)
+    new_sz  = os.path.getsize(out)
+    red = (1-new_sz/orig_sz)*100 if orig_sz>0 else 0
+    display_info(f"{orig_sz/1e6:.2f}→{new_sz/1e6:.2f} MB ({red:.1f}% reduction)")
+    if TRASH_MODE:
+        move_to_trash(src)
+    return True
+
+def process_image(src):
+    out = f"{os.path.splitext(src)[0]}{SUFFIX}.heic"
+    cmd = ["sips","-s","format","heic",src,"--out",out]
+    logger.info("Running: " + " ".join(cmd))
+    res = run_command(cmd)
+    if res.returncode!=0:
+        display_error("sips failed")
+        return False
+    if not os.path.isfile(out) or os.path.getsize(out)==0:
+        display_error(f"Output missing: {out}")
+        return False
+    orig_sz = os.path.getsize(src)
+    new_sz  = os.path.getsize(out)
+    red = (1-new_sz/orig_sz)*100 if orig_sz>0 else 0
+    display_info(f"{orig_sz/1e3:.2f}→{new_sz/1e3:.2f} KB ({red:.1f}% reduction)")
+    if TRASH_MODE:
+        move_to_trash(src)
+    return True
+
+def refine_recursive(directory, codec, fmt):
+    display_info(f"Recursively refining: {directory}")
+    files = []
+    for root, _, names in os.walk(directory):
+        for nm in names:
+            if SUFFIX in nm: continue
+            path = os.path.join(root, nm)
+            if is_video_file(path) or is_image_file(path):
+                files.append(path)
+    total = len(files)
+    display_info(f"Found {total} files")
+    proc = fail = 0
+    for idx, path in enumerate(files,1):
+        kind = "video" if is_video_file(path) else "image"
+        display_info(f"[{idx}/{total}] Processing {kind}: {path}")
+        ok = process_video(path, codec, fmt) if kind=="video" else process_image(path)
+        if ok:
+            display_info(f"✓ {path}")
+        else:
+            fail += 1
+            display_error(f"✗ {path}")
+        proc += 1
+    display_info(f"Done. Processed: {proc}, Failed: {fail}")
+
+def main():
+    global ENABLE_LOGGING, USE_GPU, TRASH_MODE, DEBUG_MODE
+    p = argparse.ArgumentParser(description="Pythonized automat")
+    p.add_argument("-v", action="store_true")
+    p.add_argument("-c", default=DEFAULT_CODEC)
+    p.add_argument("-g", action="store_true")
+    p.add_argument("-f", default=DEFAULT_FORMAT)
+    p.add_argument("-l", action="store_true")
+    p.add_argument("-t", action="store_true")
+    p.add_argument("-d", action="store_true")
+    p.add_argument("operation", choices=["refine","amv","loop_audio","audiofy"])
+    p.add_argument("source")
+    p.add_argument("param", nargs="?")
+    args = p.parse_args()
+
+    ENABLE_LOGGING = args.l or args.v or args.d
+    DEBUG_MODE    = args.d
+    USE_GPU       = args.g
+    TRASH_MODE    = args.t
+    codec = args.c
+    fmt   = args.f
+
+    setup_logging()
+
+    if args.operation=="refine" and os.path.isdir(args.source):
+        refine_recursive(args.source, codec, fmt)
+    else:
+        if not os.path.exists(args.source):
+            display_error(f"Not found: {args.source}")
+            sys.exit(1)
+        if is_video_file(args.source):
+            process_video(args.source, codec, fmt)
+        elif is_image_file(args.source):
+            process_image(args.source)
+        else:
+            display_error(f"Unsupported type: {args.source}")
+            sys.exit(1)
+
+if __name__ == "__main__":
+    main()
