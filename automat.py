@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import subprocess
-import os
 import sys
 import logging
 import tempfile
 import json
+import shutil
+from pathlib import Path
 
 # Global settings
 LOG_FILE = "/tmp/automat.log"
@@ -17,57 +18,48 @@ SUFFIX = "-re"
 DEFAULT_CODEC = "hevc"
 DEFAULT_FORMAT = "mov"
 
-logger = logging.getLogger("automat")
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger(__name__)
 
 def setup_logging():
     logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
-    fmt = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s",
-                             datefmt="%Y-%m-%d %H:%M:%S")
-    if ENABLE_LOGGING:
-        fh = logging.FileHandler(LOG_FILE)
-        fh.setFormatter(fmt)
-        fh.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
-        logger.addHandler(fh)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setFormatter(logging.Formatter("%(message)s"))
-    ch.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
-    logger.addHandler(ch)
 
 def display_error(message):
-    print(f"Error: {message}", file=sys.stderr)
     logger.error(message)
 
 def display_info(message):
-    print(message)
     logger.info(message)
 
 def display_debug(message):
     if DEBUG_MODE:
-        print(f"Debug: {message}")
-    logger.debug(message)
+        logger.debug(message)
 
-def run_command(cmd):
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+def run_command(cmd: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
-def is_video_file(path):
-    if not os.path.isfile(path):
+def is_video_file(path) -> bool:
+    path = Path(path)
+    if not path.is_file():
         return False
-    res = run_command(["file", "--mime-type", "-b", path])
+    res = run_command(["file", "--mime-type", "-b", str(path)])
     return res.stdout.strip().startswith("video/")
 
-def is_image_file(path):
-    if not os.path.isfile(path):
+def is_image_file(path) -> bool:
+    path = Path(path)
+    if not path.is_file():
         return False
-    res = run_command(["file", "--mime-type", "-b", path])
+    res = run_command(["file", "--mime-type", "-b", str(path)])
     return res.stdout.strip().startswith("image/")
 
 def move_to_trash(path):
-    if not os.path.isfile(path):
-        display_error(f"File not found for trashing: {path}")
+    path = Path(path)
+    if not path.exists():
+        logger.error("File not found for trashing: %s", path)
         return
     script = f'''
     tell application "Finder"
-        move POSIX file "{os.path.abspath(path)}" to trash
+        move POSIX file "{path.as_posix()}" to trash
     end tell
     '''
     res = run_command(["osascript", "-e", script])
@@ -78,9 +70,10 @@ def move_to_trash(path):
         display_error(f"Trash failed: {res.stderr.strip()}")
 
 def get_video_info(source):
-    display_debug(f"Getting info for: {source}")
+    source = Path(source)
+    logger.debug("Getting info for: %s", source)
     cmd = ["ffprobe", "-v", "quiet", "-print_format", "json",
-           "-show_format", "-show_streams", source]
+           "-show_format", "-show_streams", str(source)]
     res = run_command(cmd)
     if res.returncode != 0:
         display_error(f"ffprobe error on {source}")
@@ -90,8 +83,8 @@ def get_video_info(source):
     width = stream.get("width", 0) or 0
     height = stream.get("height",0) or 0
     duration = float(info.get("format",{}).get("duration",0.0)) or 0.0
+    filesize = source.stat().st_size
     bitrate = int(info.get("format",{}).get("bit_rate",0) or 0)
-    filesize = os.path.getsize(source)
     logger.info(f"Info: {width}x{height}, {duration}s, {bitrate}b/s, {filesize} bytes")
     return width, height, duration, bitrate, filesize
 
@@ -114,8 +107,9 @@ def calculate_optimal_bitrate(w, h, curr, size, dur):
     return chosen
 
 def build_ffmpeg_command(src, codec, fmt, bitrate):
-    display_debug(f"Build ffmpeg cmd: codec={codec}, fmt={fmt}, br={bitrate}")
+    src = Path(src)
     vf = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+    out = src.parent / f"{src.stem}{SUFFIX}.{fmt}"
     kb = bitrate//1024
     if codec=="h264":
         vopt = f"-c:v h264_videotoolbox -b:v {kb}k -tag:v avc1"
@@ -132,31 +126,29 @@ def build_ffmpeg_command(src, codec, fmt, bitrate):
             vopt = "-c:v libvpx-vp9 -crf 30 -b:v 0 -f webm"
         else:
             vopt += " -f webm"
-    out = f"{os.path.splitext(src)[0]}{SUFFIX}.{fmt}"
-    cmd = [ "ffmpeg", "-hwaccel", "videotoolbox", "-i", src
-        ] + vopt.split() + [
+    cmd = ["ffmpeg", "-hwaccel", "videotoolbox", "-i", str(src)] + vopt.split() + [
             "-vf", vf,
             "-c:a", "aac", "-b:a", "128k",
             "-pix_fmt", "yuv420p",
-            "-y", out
+            "-y", str(out)
             ]
     return cmd, out
 
 def process_video(src, codec, fmt):
+    src = Path(src)
     w,h,dur,br,sz = get_video_info(src)
     new_br = calculate_optimal_bitrate(w,h,br,sz,dur)
     cmd, out = build_ffmpeg_command(src, codec, fmt, new_br)
     logger.info("Running: " + " ".join(cmd))
-    with tempfile.NamedTemporaryFile() as tmp:
-        res = subprocess.run(cmd, stdout=tmp, stderr=tmp)
-    if res.returncode!=0:
+    res = run_command(cmd)
+    if res.returncode != 0:
         display_error("ffmpeg failed")
         return False
-    if not os.path.isfile(out) or os.path.getsize(out)==0:
+    if not out.is_file() or out.stat().st_size == 0:
         display_error(f"Output missing: {out}")
         return False
-    orig_sz = os.path.getsize(src)
-    new_sz  = os.path.getsize(out)
+    orig_sz = src.stat().st_size
+    new_sz  = out.stat().st_size
     red = (1-new_sz/orig_sz)*100 if orig_sz>0 else 0
     display_info(f"{orig_sz/1e6:.2f}→{new_sz/1e6:.2f} MB ({red:.1f}% reduction)")
     if TRASH_MODE:
@@ -164,18 +156,19 @@ def process_video(src, codec, fmt):
     return True
 
 def process_image(src):
-    out = f"{os.path.splitext(src)[0]}{SUFFIX}.heic"
-    cmd = ["sips","-s","format","heic",src,"--out",out]
+    src = Path(src)
+    out = src.parent / f"{src.stem}{SUFFIX}.heic"
+    cmd = ["sips","-s","format","heic",str(src),"--out",str(out)]
     logger.info("Running: " + " ".join(cmd))
     res = run_command(cmd)
-    if res.returncode!=0:
+    if res.returncode != 0:
         display_error("sips failed")
         return False
-    if not os.path.isfile(out) or os.path.getsize(out)==0:
+    if not out.is_file() or out.stat().st_size == 0:
         display_error(f"Output missing: {out}")
         return False
-    orig_sz = os.path.getsize(src)
-    new_sz  = os.path.getsize(out)
+    orig_sz = src.stat().st_size
+    new_sz  = out.stat().st_size
     red = (1-new_sz/orig_sz)*100 if orig_sz>0 else 0
     display_info(f"{orig_sz/1e3:.2f}→{new_sz/1e3:.2f} KB ({red:.1f}% reduction)")
     if TRASH_MODE:
@@ -185,17 +178,21 @@ def process_image(src):
 def refine_recursive(directory, codec, fmt):
     display_info(f"Recursively refining: {directory}")
     files = []
-    for root, _, names in os.walk(directory):
-        for nm in names:
-            if SUFFIX in nm: continue
-            path = os.path.join(root, nm)
-            if is_video_file(path) or is_image_file(path):
-                files.append(path)
+    directory = Path(directory)
+    for path in directory.rglob("*"):
+        if path.stem.endswith(SUFFIX):
+            continue
+        if is_video_file(path):
+            kind = "video"
+        elif is_image_file(path):
+            kind = "image"
+        else:
+            continue
+        files.append(path)
     total = len(files)
     display_info(f"Found {total} files")
     proc = fail = 0
     for idx, path in enumerate(files,1):
-        kind = "video" if is_video_file(path) else "image"
         display_info(f"[{idx}/{total}] Processing {kind}: {path}")
         ok = process_video(path, codec, fmt) if kind=="video" else process_image(path)
         if ok:
@@ -230,19 +227,22 @@ def main():
 
     setup_logging()
 
-    if args.operation=="refine" and os.path.isdir(args.source):
-        refine_recursive(args.source, codec, fmt)
+    source_path = Path(args.source)
+
+    if args.operation=="refine" and source_path.is_dir():
+        refine_recursive(source_path, codec, fmt)
     else:
-        if not os.path.exists(args.source):
-            display_error(f"Not found: {args.source}")
-            sys.exit(1)
-        if is_video_file(args.source):
-            process_video(args.source, codec, fmt)
-        elif is_image_file(args.source):
-            process_image(args.source)
+        if not source_path.exists():
+            logger.error(f"Not found: {source_path}")
+            return 1
+        if is_video_file(source_path):
+            process_video(source_path, codec, fmt)
+        elif is_image_file(source_path):
+            process_image(source_path)
         else:
-            display_error(f"Unsupported type: {args.source}")
-            sys.exit(1)
+            logger.error(f"Unsupported type: {source_path}")
+            return 1
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
