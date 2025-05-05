@@ -21,7 +21,7 @@ DEFAULT_CODEC = "hevc"
 DEFAULT_FORMAT = "mp4"
 
 # Default CPU-based CRF encoding settings
-DEFAULT_PRESET = "medium"  # encoding speed vs compression efficiency
+DEFAULT_PRESET = "slow"  # encoding speed vs compression efficiency
 DEFAULT_CRF_H264 = 23      # quality level for H.264 (lower is higher quality)
 DEFAULT_CRF_HEVC = 28      # quality level for HEVC
 
@@ -151,7 +151,7 @@ def build_ffmpeg_command(src, codec, fmt, bitrate):
         if codec == "h264":
             vopt = f"-c:v libx264 -preset {DEFAULT_PRESET} -crf {DEFAULT_CRF_H264}"
         elif codec == "hevc":
-            vopt = f"-c:v libx265 -preset {DEFAULT_PRESET} -crf {DEFAULT_CRF_HEVC} -tag:v hvc1"
+            vopt = f"-c:v libx265 -preset {DEFAULT_PRESET} -crf {DEFAULT_CRF_HEVC} -tag:v hvc1 -x265-params \"psy-rd=2.0:psy-rdoq=1.0:aq-mode=3:aq-strength=1.0:ref=5:bframes=8:rc-lookahead=60\""
         elif codec == "av1":
             vopt = "-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
         else:
