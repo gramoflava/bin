@@ -233,25 +233,62 @@ def main():
     p = argparse.ArgumentParser(
         description=(
             "Automat: refine videos and images using hardware-accelerated encoding.\n\n"
-            "Examples:\n"
-            "  source ~/.zshrc.d/env.zsh\n"
-            "  for f in \"$@\"; do\n"
-            "    /Users/lava/bin/automat.py -t refine \"$f\"\n"
-            "  done\n\n"
-            "See top-of-file comments for Automator Quick Action setup."
+            "This tool optimizes media files by re-encoding them with efficient codecs.\n"
+            "Videos are processed with ffmpeg using hardware acceleration when available.\n"
+            "Images are converted to HEIC format using sips for better compression."
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  # Refine a single video with HEVC codec and move to trash:\n"
+            "  automat.py -t refine myvideo.mp4\n\n"
+            "  # Refine all media in a directory with H264 codec and .mp4 output:\n"
+            "  automat.py -c h264 -f mp4 refine /path/to/directory\n\n"
+            "  # Process with debug info and GPU acceleration:\n"
+            "  automat.py -d -g refine myvideo.mp4\n\n"
+            "Automator Quick Action Example (macOS):\n"
+            "  1. Open Automator and create a new \"Quick Action\".\n"
+            "  2. Set \"Workflow receives current: files or folders\" in \"Finder.app\".\n"
+            "  3. Add a \"Run Shell Script\" action.\n"
+            "  4. Configure:\n"
+            "     - Shell: /bin/zsh\n"
+            "     - Pass input: as arguments\n"
+            "     - Script:\n"
+            "       ```\n"
+            "       source ~/.zshrc.d/env.zsh\n"
+            "       for f in \"$@\"; do\n"
+            "           /Users/lava/bin/automat.py -t refine \"$f\"\n"
+            "       done\n"
+            "       ```\n"
+            "  5. Save the Quick Action as \"Refine with Automat\"."
+        )
     )
-    p.add_argument("-v", action="store_true")
-    p.add_argument("-c", default=DEFAULT_CODEC)
-    p.add_argument("-g", action="store_true")
-    p.add_argument("-f", default=DEFAULT_FORMAT)
-    p.add_argument("-l", action="store_true")
-    p.add_argument("-t", action="store_true")
-    p.add_argument("-d", action="store_true")
-    p.add_argument("operation", choices=["refine","amv","loop_audio","audiofy"])
-    p.add_argument("source")
-    p.add_argument("param", nargs="?")
+    
+    # Command options
+    p.add_argument("-v", action="store_true", 
+                   help="Verbose output")
+    p.add_argument("-c", default=DEFAULT_CODEC, metavar="CODEC",
+                   help=f"Video codec (h264, hevc, av1) [default: {DEFAULT_CODEC}]")
+    p.add_argument("-g", action="store_true", 
+                   help="Enable GPU acceleration")
+    p.add_argument("-f", default=DEFAULT_FORMAT, metavar="FORMAT",
+                   help=f"Output format (mov, mp4, mkv, webm) [default: {DEFAULT_FORMAT}]")
+    p.add_argument("-l", action="store_true", 
+                   help="Enable logging to file")
+    p.add_argument("-t", action="store_true", 
+                   help="Move original files to trash after processing")
+    p.add_argument("-d", action="store_true", 
+                   help="Debug mode (extra logging)")
+    
+    # Positional arguments
+    p.add_argument("operation", 
+                   choices=["refine", "amv", "loop_audio", "audiofy"],
+                   help="Operation to perform (currently only 'refine' is fully implemented)")
+    p.add_argument("source", 
+                   help="Source file or directory to process")
+    p.add_argument("param", nargs="?", 
+                   help="Optional parameter (depends on operation)")
+    
     args = p.parse_args()
 
     ENABLE_LOGGING = args.l or args.v or args.d
@@ -265,7 +302,7 @@ def main():
 
     source_path = Path(args.source)
 
-    if args.operation=="refine" and source_path.is_dir():
+    if args.operation == "refine" and source_path.is_dir():
         refine_recursively(source_path, codec, fmt)
     else:
         if not source_path.exists():
