@@ -1,4 +1,29 @@
 #!/usr/bin/env python3
+"""
+Usage:
+  # Source your environment before running:
+  source ~/.zshrc.d/env.zsh
+
+  # Refine all videos and images in a directory, moving originals to Trash:
+  /Users/lava/bin/automat.py -t refine /path/to/directory
+
+Automator Quick Action Example (macOS):
+  1. Open Automaоtor and create a new "Quick Action".
+  2. Set "Workflow receives current: files or folders" in "Finder.app".
+  3. Add a "Run Shell Script" action.
+  4. Configure:
+     - Shell: /bin/zsh
+     - Pass input: as arguments
+     - Script:
+       ```
+       source ~/.zshrc.d/env.zsh
+       for f in "$@"; do
+           /Users/lava/bin/automat.py -t refine "$f"
+       done
+       ```
+  5. Save the Quick Action as "Refine with Automat".
+
+"""
 import argparse
 import subprocess
 import sys
@@ -175,7 +200,7 @@ def process_image(src):
         move_to_trash(src)
     return True
 
-def refine_recursive(directory, codec, fmt):
+def refine_recursively(directory, codec, fmt):
     display_info(f"Recursively refining: {directory}")
     files = []
     directory = Path(directory)
@@ -205,7 +230,18 @@ def refine_recursive(directory, codec, fmt):
 
 def main():
     global ENABLE_LOGGING, USE_GPU, TRASH_MODE, DEBUG_MODE
-    p = argparse.ArgumentParser(description="Pythonized automat")
+    p = argparse.ArgumentParser(
+        description=(
+            "Automat: refine videos and images using hardware-accelerated encoding.\n\n"
+            "Examples:\n"
+            "  source ~/.zshrc.d/env.zsh\n"
+            "  for f in \"$@\"; do\n"
+            "    /Users/lava/bin/automat.py -t refine \"$f\"\n"
+            "  done\n\n"
+            "See top-of-file comments for Automator Quick Action setup."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("-v", action="store_true")
     p.add_argument("-c", default=DEFAULT_CODEC)
     p.add_argument("-g", action="store_true")
@@ -230,7 +266,7 @@ def main():
     source_path = Path(args.source)
 
     if args.operation=="refine" and source_path.is_dir():
-        refine_recursive(source_path, codec, fmt)
+        refine_recursively(source_path, codec, fmt)
     else:
         if not source_path.exists():
             logger.error(f"Not found: {source_path}")
