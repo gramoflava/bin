@@ -1,57 +1,4 @@
 #!/usr/bin/env python3
-"""
-Automat: Optimize videos and images with hardware acceleration
-
-Usage:
-  # Basic usage:
-  automat.py [-t] [-c codec] [-f format] refine file_or_directory
-
-Options:
-  -t          Move original files to trash after processing
-  -c CODEC    Video codec: h264, hevc (default), av1
-  -f FORMAT   Output format: mov (default), mp4, mkv, webm
-  -l          Enable logging to file
-  -d          Debug mode (extra logging)
-  -v          Verbose output
-  -g          Enable GPU acceleration
-  -s SUFFIX   Custom suffix for output files (default: "-re")
-  -n          Dry-run mode (show what would happen without processing)
-
-Operations:
-  refine      Optimize media files with the specified codec/format
-  
-macOS Automator Quick Action Setup:
-  1. Open Automator and create a new "Quick Action"
-  2. Set "Workflow receives current: files or folders" in "Finder.app"
-  3. Add a "Run Shell Script" action with:
-     - Shell: /bin/zsh
-     - Pass input: as arguments
-     - Script:
-       ```
-       # Set the path to your python installation if not using system python
-       # export PATH="/opt/homebrew/bin:$PATH"
-       
-       # Store the current directory to return to it later
-       CURRENT_DIR=$(pwd)
-       
-       for f in "$@"; do
-           # Get the directory of the file and change to it
-           # This ensures relative paths work correctly
-           FILE_DIR=$(dirname "$f")
-           cd "$FILE_DIR" || exit 1
-           
-           # Run automat on the file (full path)
-           $HOME/bin/automat.py -t refine "$f"
-       done
-       
-       # Return to the original directory
-       cd "$CURRENT_DIR" || exit 1
-       
-       # Optionally show notification when complete
-       osascript -e 'display notification "Media optimization complete" with title "Automat"'
-       ```
-  4. Save as "Optimize with Automat"
-"""
 import argparse
 import subprocess
 import sys
@@ -71,7 +18,12 @@ DEBUG_MODE = False
 DRY_RUN = False
 SUFFIX = "-re"
 DEFAULT_CODEC = "hevc"
-DEFAULT_FORMAT = "mov"
+DEFAULT_FORMAT = "mp4"
+
+# Default CPU-based CRF encoding settings
+DEFAULT_PRESET = "medium"  # encoding speed vs compression efficiency
+DEFAULT_CRF_H264 = 23      # quality level for H.264 (lower is higher quality)
+DEFAULT_CRF_HEVC = 28      # quality level for HEVC
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
@@ -181,28 +133,53 @@ def build_ffmpeg_command(src, codec, fmt, bitrate):
     src = Path(src)
     vf = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
     out = src.parent / f"{src.stem}{SUFFIX}.{fmt}"
-    kb = bitrate//1024
-    if codec=="h264":
-        vopt = f"-c:v h264_videotoolbox -b:v {kb}k -tag:v avc1"
-    elif codec=="hevc":
-        vopt = f"-c:v hevc_videotoolbox -b:v {kb}k -tag:v hvc1"
-    elif codec=="av1":
-        vopt = "-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
+
+    # Choose encoding strategy based on GPU flag
+    if USE_GPU:
+        # Hardware-accelerated bitrate-based encoding
+        if codec == "h264":
+            vopt = f"-c:v h264_videotoolbox -b:v {bitrate//1024}k -tag:v avc1"
+        elif codec == "hevc":
+            vopt = f"-c:v hevc_videotoolbox -b:v {bitrate//1024}k -tag:v hvc1"
+        elif codec == "av1":
+            vopt = "-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
+        else:
+            display_error(f"Invalid codec: {codec}")
+            sys.exit(1)
     else:
-        display_error(f"Invalid codec: {codec}")
-        sys.exit(1)
-    if fmt=="mkv":    vopt += " -f matroska"
-    elif fmt=="webm":
-        if codec!="av1":
+        # CPU-based CRF encoding for better quality/size tradeoff
+        if codec == "h264":
+            vopt = f"-c:v libx264 -preset {DEFAULT_PRESET} -crf {DEFAULT_CRF_H264}"
+        elif codec == "hevc":
+            vopt = f"-c:v libx265 -preset {DEFAULT_PRESET} -crf {DEFAULT_CRF_HEVC} -tag:v hvc1"
+        elif codec == "av1":
+            vopt = "-c:v libaom-av1 -crf 30 -b:v 0 -strict experimental"
+        else:
+            display_error(f"Invalid codec: {codec}")
+            sys.exit(1)
+
+    if fmt == "mkv":
+        vopt += " -f matroska"
+    elif fmt == "webm":
+        if codec != "av1":
             vopt = "-c:v libvpx-vp9 -crf 30 -b:v 0 -f webm"
         else:
             vopt += " -f webm"
-    cmd = ["ffmpeg", "-hwaccel", "videotoolbox", "-i", str(src)] + vopt.split() + [
-            "-vf", vf,
-            "-c:a", "aac", "-b:a", "128k",
-            "-pix_fmt", "yuv420p",
-            "-y", str(out)
-            ]
+
+    # Build FFmpeg command with optional GPU acceleration and faststart
+    cmd = ["ffmpeg"]
+    if USE_GPU:
+        cmd += ["-hwaccel", "videotoolbox"]
+    cmd += ["-i", str(src)]
+    cmd += vopt.split()
+    cmd += [
+        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "-c:a", "aac", "-b:a", "128k",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        "-y",
+        str(out)
+    ]
     return cmd, out
 
 def process_video(src, codec, fmt):
@@ -303,23 +280,12 @@ def main():
             "     - Shell: /bin/zsh\n"
             "     - Pass input: as arguments\n"
             "     - Script:\n"
-            "       ```\n"
-            "       # Store current directory\n"
-            "       CURRENT_DIR=$(pwd)\n"
-            "       \n"
-            "       for f in \"$@\"; do\n"
-            "           # Change to file's directory for proper relative paths\n"
-            "           cd \"$(dirname \"$f\")\" || exit 1\n"
-            "           /Users/lava/bin/automat.py -t refine \"$f\"\n"
-            "       done\n"
-            "       \n"
-            "       # Return to original directory\n"
-            "       cd \"$CURRENT_DIR\" || exit 1\n"
-            "       \n"
-            "       # Show notification\n"
-            "       osascript -e 'display notification \"Media optimization complete\" with title \"Automat\"'\n"
-            "       ```\n"
-            "  5. Save the Quick Action as \"Refine with Automat\"."
+            "```\n"
+            "source $HOME/.zshrc\n"
+            "for f in \"$@\"; do\n"
+            "    $HOME/bin/automat.py -t refine \"$f\"\n"
+            "done\n"
+            "```\n"
         )
     )
     
